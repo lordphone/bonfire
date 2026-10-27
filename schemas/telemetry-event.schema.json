@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://outcomeserve.local/schemas/telemetry-event.schema.json",
+  "title": "OutcomeServe TelemetryEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "experiment_id",
+    "run_id",
+    "task_id",
+    "step_id",
+    "configuration_id",
+    "wall_time",
+    "monotonic_ns",
+    "clock_id",
+    "worker",
+    "hardware",
+    "model",
+    "details"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "event_id": {"type": "string", "minLength": 1},
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "WORKER_START_REQUESTED",
+        "WORKER_PROCESS_STARTED",
+        "WORKER_READY",
+        "HEALTH_CHECK_FAILED",
+        "PROCESS_EXITED",
+        "FAULT_INJECTED",
+        "CRASH_DETECTED",
+        "RECONCILIATION_STARTED",
+        "RECONCILIATION_FINISHED",
+        "PREFILL_STARTED",
+        "PREFILL_FINISHED",
+        "GENERATION_RESUMED",
+        "NEXT_TOKEN_EMITTED",
+        "RECOVERY_ABSTAIN",
+        "GPU_SAMPLE"
+      ]
+    },
+    "experiment_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "step_id": {"type": "string", "minLength": 1},
+    "injection_id": {"type": ["string", "null"]},
+    "configuration_id": {"type": "string", "minLength": 1},
+    "wall_time": {"type": "string", "format": "date-time"},
+    "monotonic_ns": {"type": "integer", "minimum": 0},
+    "clock_id": {"type": "string", "minLength": 1},
+    "worker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lineage_id", "instance_id", "attempt"],
+      "properties": {
+        "lineage_id": {"type": "string", "minLength": 1},
+        "instance_id": {"type": "string", "minLength": 1},
+        "attempt": {"type": "integer", "minimum": 1}
+      }
+    },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host_id", "gpu_model", "gpu_uuid", "driver_version"],
+      "properties": {
+        "host_id": {"type": "string", "minLength": 1},
+        "gpu_model": {"type": ["string", "null"]},
+        "gpu_uuid": {"type": ["string", "null"]},
+        "driver_version": {"type": ["string", "null"]}
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision", "dtype"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "dtype": {"type": "string", "minLength": 1}
+      }
+    },
+    "details": {"type": "object"}
+  }
+}

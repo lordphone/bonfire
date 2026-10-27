@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://outcomeserve.local/schemas/fault-injection.schema.json",
+  "title": "OutcomeServe FaultInjectionRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "injection_id",
+    "experiment_id",
+    "task_id",
+    "step_id",
+    "seed",
+    "target_worker_id",
+    "configuration_id",
+    "boundary",
+    "action",
+    "expected_precondition",
+    "one_shot"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "injection_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "experiment_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "step_id": {"type": "string", "minLength": 1},
+    "seed": {"type": "integer", "minimum": 0},
+    "target_worker_id": {"type": "string", "minLength": 1},
+    "configuration_id": {"type": "string", "minLength": 1},
+    "boundary": {
+      "type": "string",
+      "enum": [
+        "DURING_GENERATION",
+        "PRE_DISPATCH",
+        "POST_TOOL_COMMIT_PRE_RESULT_LOG",
+        "POST_CONTEXT_COMMIT",
+        "DURING_RECOVERY"
+      ]
+    },
+    "action": {
+      "type": "string",
+      "enum": ["TERMINATE_PROCESS", "DROP_ACKNOWLEDGMENT"]
+    },
+    "expected_precondition": {"type": "string", "minLength": 1},
+    "one_shot": {"const": true},
+    "metadata": {"type": "object"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"action": {"const": "DROP_ACKNOWLEDGMENT"}}, "required": ["action"]},
+      "then": {"properties": {"boundary": {"const": "POST_TOOL_COMMIT_PRE_RESULT_LOG"}}}
+    }
+  ]
+}

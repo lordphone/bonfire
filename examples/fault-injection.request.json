@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "injection_id": "exp-001:order-042:step-07:ack-loss",
+  "experiment_id": "exp-001",
+  "task_id": "order-042",
+  "step_id": "step-07",
+  "seed": 20261026,
+  "target_worker_id": "runner-a-attempt-1",
+  "configuration_id": "qwen3-4b-vllm-0.32.0-baseline",
+  "boundary": "POST_TOOL_COMMIT_PRE_RESULT_LOG",
+  "action": "DROP_ACKNOWLEDGMENT",
+  "expected_precondition": "tool outcome is durably COMMITTED under the stable operation_id",
+  "one_shot": true,
+  "metadata": {
+    "operation_id": "order-042:step-07"
+  }
+}
