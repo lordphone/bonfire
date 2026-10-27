@@ -227,7 +227,15 @@ def test_trace_validator_accepts_three_health_failures_as_crash_signal():
     base = load_json("examples/telemetry-event.json")
     events = []
     for offset, event_type in enumerate(
-        ["HEALTH_CHECK_FAILED", "HEALTH_CHECK_FAILED", "HEALTH_CHECK_FAILED", "CRASH_DETECTED", "NEXT_TOKEN_EMITTED"]
+        [
+            "WORKER_START_REQUESTED",
+            "WORKER_READY",
+            "HEALTH_CHECK_FAILED",
+            "HEALTH_CHECK_FAILED",
+            "HEALTH_CHECK_FAILED",
+            "CRASH_DETECTED",
+            "NEXT_TOKEN_EMITTED",
+        ]
     ):
         event = copy.deepcopy(base)
         event.update(
@@ -242,6 +250,37 @@ def test_trace_validator_accepts_three_health_failures_as_crash_signal():
         events.append(event)
 
     module.validate_trace(events)
+
+
+def test_trace_validator_allows_one_transient_health_failure():
+    module = load_validator_module()
+    event = load_json("examples/telemetry-event.json")
+    event["event_type"] = "HEALTH_CHECK_FAILED"
+    event["details"] = {}
+
+    module.validate_trace([event])
+
+
+def test_trace_validator_rejects_unmatched_process_exit_after_completed_cycle():
+    module = load_validator_module()
+    base = load_json("examples/telemetry-event.json")
+    event_types = ["PROCESS_EXITED", "CRASH_DETECTED", "NEXT_TOKEN_EMITTED", "PROCESS_EXITED"]
+    events = []
+    for offset, event_type in enumerate(event_types):
+        event = copy.deepcopy(base)
+        event.update(
+            {
+                "event_id": f"evt-exit-{offset}",
+                "event_type": event_type,
+                "sequence": offset + 1,
+                "monotonic_ns": base["monotonic_ns"] + offset,
+            }
+        )
+        event["details"] = {}
+        events.append(event)
+
+    with pytest.raises(module.ContractError, match="PROCESS_EXITED.*CRASH_DETECTED"):
+        module.validate_trace(events)
 
 
 def test_trace_validator_accepts_recovery_interrupted_by_another_crash():
@@ -315,6 +354,60 @@ def test_recovery_abstain_requires_matching_unknown_outcome():
 
     with pytest.raises(module.ContractError, match="UNKNOWN"):
         module.validate_trace([event])
+
+
+def test_recovery_abstain_blocks_all_later_execution_progress():
+    module = load_validator_module()
+    base = load_json("examples/telemetry-event.json")
+    events = []
+    types_and_details = [
+        ("RECONCILIATION_STARTED", {"operation_id": "order-042:step-07"}),
+        ("RECONCILIATION_FINISHED", {"operation_id": "order-042:step-07", "outcome": "UNKNOWN"}),
+        ("RECOVERY_ABSTAIN", {"operation_id": "order-042:step-07", "reason": "outcome unqueryable"}),
+        ("GENERATION_RESUMED", {}),
+    ]
+    for offset, (event_type, details) in enumerate(types_and_details):
+        event = copy.deepcopy(base)
+        event.update(
+            {
+                "event_id": f"evt-halt-{offset}",
+                "event_type": event_type,
+                "sequence": offset + 1,
+                "monotonic_ns": base["monotonic_ns"] + offset,
+            }
+        )
+        event["details"] = details
+        events.append(event)
+
+    with pytest.raises(module.ContractError, match="RECOVERY_ABSTAIN.*terminal"):
+        module.validate_trace(events)
+
+
+def test_unknown_blocks_prefill_before_matching_abstain():
+    module = load_validator_module()
+    base = load_json("examples/telemetry-event.json")
+    events = []
+    types_and_details = [
+        ("RECONCILIATION_STARTED", {"operation_id": "order-042:step-07"}),
+        ("RECONCILIATION_FINISHED", {"operation_id": "order-042:step-07", "outcome": "UNKNOWN"}),
+        ("PREFILL_STARTED", {"committed_prefix_tokens": 2048}),
+        ("RECOVERY_ABSTAIN", {"operation_id": "order-042:step-07", "reason": "outcome unqueryable"}),
+    ]
+    for offset, (event_type, details) in enumerate(types_and_details):
+        event = copy.deepcopy(base)
+        event.update(
+            {
+                "event_id": f"evt-unknown-progress-{offset}",
+                "event_type": event_type,
+                "sequence": offset + 1,
+                "monotonic_ns": base["monotonic_ns"] + offset,
+            }
+        )
+        event["details"] = details
+        events.append(event)
+
+    with pytest.raises(module.ContractError, match="UNKNOWN.*RECOVERY_ABSTAIN"):
+        module.validate_trace(events)
 
 
 def test_telemetry_schema_requires_prefill_token_count():

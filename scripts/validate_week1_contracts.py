@@ -85,11 +85,21 @@ def _validate_interruptible_pairs(events: list[dict[str, Any]], start_type: str,
         raise ContractError(f"{start_type} is missing {end_type}")
 
 
-def _health_failure_signal(events: list[dict[str, Any]]) -> bool:
-    failures = [event for event in events if event["event_type"] == "HEALTH_CHECK_FAILED"]
-    if len(failures) < 3:
+def _health_failure_signal(events: list[dict[str, Any]], window_start: int, window_end: int) -> bool:
+    failure_indexes = [
+        index
+        for index in range(window_start, window_end)
+        if events[index]["event_type"] == "HEALTH_CHECK_FAILED"
+    ]
+    if len(failure_indexes) < 3:
         return False
-    last_three = failures[-3:]
+    last_three_indexes = failure_indexes[-3:]
+    if not any(
+        event["event_type"] == "WORKER_READY"
+        for event in events[: last_three_indexes[0]]
+    ):
+        return False
+    last_three = [events[index] for index in last_three_indexes]
     gaps = [
         later["monotonic_ns"] - earlier["monotonic_ns"]
         for earlier, later in zip(last_three, last_three[1:])
@@ -99,14 +109,6 @@ def _health_failure_signal(events: list[dict[str, Any]]) -> bool:
 
 def _validate_crash_cycles(events: list[dict[str, Any]]) -> None:
     detection_indexes = [index for index, event in enumerate(events) if event["event_type"] == "CRASH_DETECTED"]
-    signal_types = {"PROCESS_EXITED", "HEALTH_CHECK_FAILED"}
-    has_any_signal = any(
-        event["event_type"] in signal_types
-        or (event["event_type"] == "FAULT_INJECTED" and event["details"].get("action") == "TERMINATE_PROCESS")
-        for event in events
-    )
-    if has_any_signal and not detection_indexes:
-        raise ContractError("failure signal is missing CRASH_DETECTED")
 
     previous_detection = -1
     for detection_index in detection_indexes:
@@ -116,9 +118,18 @@ def _validate_crash_cycles(events: list[dict[str, Any]]) -> None:
             or (event["event_type"] == "FAULT_INJECTED" and event["details"].get("action") == "TERMINATE_PROCESS")
             for event in window
         )
-        if not direct_signal and not _health_failure_signal(window):
+        if not direct_signal and not _health_failure_signal(events, previous_detection + 1, detection_index):
             raise ContractError("CRASH_DETECTED is missing a process exit, termination fault, or three timed health failures")
         previous_detection = detection_index
+
+    tail_start = detection_indexes[-1] + 1 if detection_indexes else 0
+    for event in events[tail_start:]:
+        if event["event_type"] == "PROCESS_EXITED":
+            raise ContractError("PROCESS_EXITED is missing a subsequent CRASH_DETECTED")
+        if event["event_type"] == "FAULT_INJECTED" and event["details"].get("action") == "TERMINATE_PROCESS":
+            raise ContractError("termination FAULT_INJECTED is missing a subsequent CRASH_DETECTED")
+    if _health_failure_signal(events, tail_start, len(events)):
+        raise ContractError("three timed HEALTH_CHECK_FAILED events are missing a subsequent CRASH_DETECTED")
 
     if detection_indexes:
         terminal_indexes = [
@@ -133,10 +144,13 @@ def _validate_crash_cycles(events: list[dict[str, Any]]) -> None:
 def _validate_reconciliation_outcomes(events: list[dict[str, Any]]) -> None:
     pending_unknown: str | None = None
     halted = False
+    diagnostic_types = {"GPU_SAMPLE", "HEALTH_CHECK_FAILED", "PROCESS_EXITED", "CRASH_DETECTED"}
     for event in events:
         event_type = event["event_type"]
-        if halted and (event_type == "NEXT_TOKEN_EMITTED" or event["accepted_state_mutation"]):
-            raise ContractError("RECOVERY_ABSTAIN must halt before generation or state mutation")
+        if halted and (event_type not in diagnostic_types or event["accepted_state_mutation"]):
+            raise ContractError("RECOVERY_ABSTAIN is terminal; only non-mutating diagnostic telemetry may follow")
+        if pending_unknown is not None and event_type not in diagnostic_types | {"RECOVERY_ABSTAIN"}:
+            raise ContractError("UNKNOWN must be followed by RECOVERY_ABSTAIN before execution or recovery progress")
 
         if event_type == "RECONCILIATION_FINISHED":
             outcome = event["details"]["outcome"]
@@ -150,18 +164,18 @@ def _validate_reconciliation_outcomes(events: list[dict[str, Any]]) -> None:
                 raise ContractError("RECOVERY_ABSTAIN requires a matching UNKNOWN reconciliation outcome")
             pending_unknown = None
             halted = True
-        elif pending_unknown is not None and (event_type == "NEXT_TOKEN_EMITTED" or event["accepted_state_mutation"]):
-            raise ContractError("UNKNOWN must be followed by RECOVERY_ABSTAIN before resume or mutation")
+        elif pending_unknown is not None and event["accepted_state_mutation"]:
+            raise ContractError("UNKNOWN must be followed by RECOVERY_ABSTAIN before mutation")
 
     if pending_unknown is not None:
         raise ContractError("UNKNOWN must be followed by matching RECOVERY_ABSTAIN")
 
 
 def _validate_step_boundaries(events: list[dict[str, Any]]) -> None:
+    _validate_reconciliation_outcomes(events)
     _validate_interruptible_pairs(events, "RECONCILIATION_STARTED", "RECONCILIATION_FINISHED")
     _validate_interruptible_pairs(events, "PREFILL_STARTED", "PREFILL_FINISHED")
     _validate_crash_cycles(events)
-    _validate_reconciliation_outcomes(events)
 
 
 def validate_trace(events: list[dict[str, Any]]) -> None:
