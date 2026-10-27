@@ -252,6 +252,38 @@ def test_trace_validator_accepts_three_health_failures_as_crash_signal():
     module.validate_trace(events)
 
 
+def test_health_failure_crash_requires_ready_for_same_worker_attempt():
+    module = load_validator_module()
+    base = load_json("examples/telemetry-event.json")
+    event_types = [
+        "WORKER_START_REQUESTED",
+        "WORKER_READY",
+        "HEALTH_CHECK_FAILED",
+        "HEALTH_CHECK_FAILED",
+        "HEALTH_CHECK_FAILED",
+        "CRASH_DETECTED",
+        "NEXT_TOKEN_EMITTED",
+    ]
+    events = []
+    for offset, event_type in enumerate(event_types):
+        event = copy.deepcopy(base)
+        event.update(
+            {
+                "event_id": f"evt-cross-worker-health-{offset}",
+                "event_type": event_type,
+                "sequence": offset + 1,
+                "monotonic_ns": base["monotonic_ns"] + offset * 1_000_000_000,
+            }
+        )
+        event["details"] = {}
+        if offset >= 2:
+            event["worker"].update({"instance_id": "runner-a-attempt-2", "attempt": 2, "owner_epoch": 2})
+        events.append(event)
+
+    with pytest.raises(module.ContractError, match="three timed health failures"):
+        module.validate_trace(events)
+
+
 def test_trace_validator_allows_one_transient_health_failure():
     module = load_validator_module()
     event = load_json("examples/telemetry-event.json")

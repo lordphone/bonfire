@@ -94,8 +94,30 @@ def _health_failure_signal(events: list[dict[str, Any]], window_start: int, wind
     if len(failure_indexes) < 3:
         return False
     last_three_indexes = failure_indexes[-3:]
+    failing_worker = events[last_three_indexes[0]]["worker"]
+    worker_identity = (
+        failing_worker["instance_id"],
+        failing_worker["attempt"],
+        failing_worker["owner_epoch"],
+    )
+    if any(
+        (
+            events[index]["worker"]["instance_id"],
+            events[index]["worker"]["attempt"],
+            events[index]["worker"]["owner_epoch"],
+        )
+        != worker_identity
+        for index in last_three_indexes
+    ):
+        return False
     if not any(
         event["event_type"] == "WORKER_READY"
+        and (
+            event["worker"]["instance_id"],
+            event["worker"]["attempt"],
+            event["worker"]["owner_epoch"],
+        )
+        == worker_identity
         for event in events[: last_three_indexes[0]]
     ):
         return False
