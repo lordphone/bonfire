@@ -35,6 +35,14 @@ def test_environment_lock_uses_immutable_runtime_and_model_pins():
     assert lock["serving"]["enable_prefix_caching"] is False
 
 
+def test_environment_lock_schema_rejects_runtime_drift():
+    schema = load_json("schemas/environment-lock.schema.json")
+    lock = load_json("infra/environment.lock.json")
+    lock["runtime"]["python"] = "3.13"
+
+    assert list(Draft202012Validator(schema).iter_errors(lock))
+
+
 @pytest.mark.parametrize(
     "relative_schema,relative_example",
     [
@@ -69,6 +77,15 @@ def test_ack_loss_is_limited_to_post_commit_response_suppression():
     request["boundary"] = "PRE_DISPATCH"
 
     assert list(validator.iter_errors(request)), "pre-dispatch acknowledgment loss must be rejected"
+
+
+def test_ack_loss_requires_a_stable_operation_id():
+    schema = load_json("schemas/fault-injection.schema.json")
+    validator = Draft202012Validator(schema)
+    request = load_json("examples/fault-injection.request.json")
+    request["metadata"].pop("operation_id")
+
+    assert list(validator.iter_errors(request)), "ack loss without operation_id must be rejected"
 
 
 def test_fault_schedule_rejects_reused_identity_with_changed_payload():
@@ -114,10 +131,101 @@ def test_trace_validator_rejects_worker_lineage_drift():
         "lineage_id": "runner-b",
         "instance_id": "runner-b-attempt-1",
         "attempt": 1,
+        "owner_epoch": 1,
     }
 
     with pytest.raises(module.ContractError, match="lineage_id"):
         module.validate_trace([event, replacement])
+
+
+def test_trace_validator_accepts_multiple_steps_in_one_run():
+    module = load_validator_module()
+    first = load_json("examples/telemetry-event.json")
+    second = copy.deepcopy(first)
+    second["event_id"] = "evt-step-08"
+    second["step_id"] = "step-08"
+    second["monotonic_ns"] += 1
+    second["sequence"] += 1
+
+    module.validate_trace([first, second])
+
+
+def test_trace_validator_rejects_missing_metric_boundary():
+    module = load_validator_module()
+    event = load_json("examples/telemetry-event.json")
+    event["event_type"] = "PREFILL_STARTED"
+    event["details"] = {"committed_prefix_tokens": 2048}
+
+    with pytest.raises(module.ContractError, match="PREFILL_FINISHED"):
+        module.validate_trace([event])
+
+
+def test_trace_validator_rejects_semantically_reversed_boundaries():
+    module = load_validator_module()
+    event = load_json("examples/telemetry-event.json")
+    finished = copy.deepcopy(event)
+    started = copy.deepcopy(event)
+    finished.update({"event_id": "evt-finished", "event_type": "PREFILL_FINISHED"})
+    finished["details"] = {"committed_prefix_tokens": 2048}
+    started.update(
+        {
+            "event_id": "evt-started",
+            "event_type": "PREFILL_STARTED",
+            "monotonic_ns": event["monotonic_ns"] + 1,
+            "sequence": event["sequence"] + 1,
+        }
+    )
+    started["details"] = {"committed_prefix_tokens": 2048}
+
+    with pytest.raises(module.ContractError, match="PREFILL_STARTED.*PREFILL_FINISHED"):
+        module.validate_trace([finished, started])
+
+
+def test_trace_validator_rejects_stale_owner_epoch_after_replacement():
+    module = load_validator_module()
+    first = load_json("examples/telemetry-event.json")
+    replacement = copy.deepcopy(first)
+    replacement.update({"event_id": "evt-replacement", "monotonic_ns": first["monotonic_ns"] + 1})
+    replacement["sequence"] += 1
+    replacement["worker"].update({"instance_id": "runner-a-attempt-2", "attempt": 2, "owner_epoch": 2})
+    stale = copy.deepcopy(first)
+    stale.update({"event_id": "evt-stale", "monotonic_ns": first["monotonic_ns"] + 2})
+    stale["sequence"] += 2
+    stale["accepted_state_mutation"] = True
+
+    with pytest.raises(module.ContractError, match="owner_epoch"):
+        module.validate_trace([first, replacement, stale])
+
+
+def test_telemetry_schema_requires_prefill_token_count():
+    schema = load_json("schemas/telemetry-event.schema.json")
+    event = load_json("examples/telemetry-event.json")
+    event["event_type"] = "PREFILL_STARTED"
+    event["details"] = {}
+
+    assert list(Draft202012Validator(schema).iter_errors(event))
+
+
+def test_telemetry_schema_requires_operation_id_for_ack_loss_event():
+    schema = load_json("schemas/telemetry-event.schema.json")
+    event = load_json("examples/telemetry-event.json")
+    event["event_type"] = "FAULT_INJECTED"
+    event["injection_id"] = "exp-001:order-042:step-07:ack-loss"
+    event["details"] = {
+        "boundary": "POST_TOOL_COMMIT_PRE_RESULT_LOG",
+        "action": "DROP_ACKNOWLEDGMENT",
+    }
+
+    assert list(Draft202012Validator(schema).iter_errors(event))
+
+
+def test_telemetry_schema_requires_machine_readable_reconciliation_outcome():
+    schema = load_json("schemas/telemetry-event.schema.json")
+    event = load_json("examples/telemetry-event.json")
+    event["event_type"] = "RECONCILIATION_FINISHED"
+    event["details"] = {"operation_id": "order-042:step-07"}
+
+    assert list(Draft202012Validator(schema).iter_errors(event))
 
 
 def test_cli_validates_all_week1_contracts():

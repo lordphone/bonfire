@@ -13,10 +13,12 @@
     "task_id",
     "step_id",
     "configuration_id",
+    "sequence",
     "wall_time",
     "monotonic_ns",
     "clock_id",
     "worker",
+    "accepted_state_mutation",
     "hardware",
     "model",
     "details"
@@ -50,19 +52,22 @@
     "step_id": {"type": "string", "minLength": 1},
     "injection_id": {"type": ["string", "null"]},
     "configuration_id": {"type": "string", "minLength": 1},
+    "sequence": {"type": "integer", "minimum": 1},
     "wall_time": {"type": "string", "format": "date-time"},
     "monotonic_ns": {"type": "integer", "minimum": 0},
     "clock_id": {"type": "string", "minLength": 1},
     "worker": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["lineage_id", "instance_id", "attempt"],
+      "required": ["lineage_id", "instance_id", "attempt", "owner_epoch"],
       "properties": {
         "lineage_id": {"type": "string", "minLength": 1},
         "instance_id": {"type": "string", "minLength": 1},
-        "attempt": {"type": "integer", "minimum": 1}
+        "attempt": {"type": "integer", "minimum": 1},
+        "owner_epoch": {"type": "integer", "minimum": 1}
       }
     },
+    "accepted_state_mutation": {"type": "boolean"},
     "hardware": {
       "type": "object",
       "additionalProperties": false,
@@ -85,5 +90,97 @@
       }
     },
     "details": {"type": "object"}
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"event_type": {"const": "FAULT_INJECTED"}}, "required": ["event_type"]},
+      "then": {
+        "properties": {
+          "injection_id": {"type": "string", "minLength": 1},
+          "details": {
+            "type": "object",
+            "required": ["boundary", "action"],
+            "properties": {
+              "boundary": {
+                "enum": [
+                  "DURING_GENERATION",
+                  "PRE_DISPATCH",
+                  "POST_TOOL_COMMIT_PRE_RESULT_LOG",
+                  "POST_CONTEXT_COMMIT",
+                  "DURING_RECOVERY"
+                ]
+              },
+              "action": {"enum": ["TERMINATE_PROCESS", "DROP_ACKNOWLEDGMENT"]},
+              "operation_id": {"type": "string", "minLength": 1}
+            },
+            "allOf": [
+              {
+                "if": {"properties": {"action": {"const": "DROP_ACKNOWLEDGMENT"}}, "required": ["action"]},
+                "then": {"required": ["operation_id"]}
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"event_type": {"enum": ["PREFILL_STARTED", "PREFILL_FINISHED"]}}, "required": ["event_type"]},
+      "then": {
+        "properties": {
+          "details": {
+            "type": "object",
+            "required": ["committed_prefix_tokens"],
+            "properties": {"committed_prefix_tokens": {"type": "integer", "minimum": 0}}
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"event_type": {"const": "RECONCILIATION_FINISHED"}}, "required": ["event_type"]},
+      "then": {
+        "properties": {
+          "details": {
+            "type": "object",
+            "required": ["outcome", "operation_id"],
+            "properties": {
+              "outcome": {"enum": ["COMMITTED", "NOT_COMMITTED", "UNKNOWN"]},
+              "operation_id": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"event_type": {"const": "RECOVERY_ABSTAIN"}}, "required": ["event_type"]},
+      "then": {
+        "properties": {
+          "details": {
+            "type": "object",
+            "required": ["operation_id", "reason"],
+            "properties": {
+              "operation_id": {"type": "string", "minLength": 1},
+              "reason": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"event_type": {"const": "GPU_SAMPLE"}}, "required": ["event_type"]},
+      "then": {
+        "properties": {
+          "details": {
+            "type": "object",
+            "required": ["utilization_pct", "memory_used_bytes", "power_watts", "temperature_c"],
+            "properties": {
+              "utilization_pct": {"type": "number", "minimum": 0, "maximum": 100},
+              "memory_used_bytes": {"type": "integer", "minimum": 0},
+              "power_watts": {"type": "number", "minimum": 0},
+              "temperature_c": {"type": "number"}
+            }
+          }
+        }
+      }
+    }
+  ]
 }

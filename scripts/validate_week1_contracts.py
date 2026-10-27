@@ -25,6 +25,7 @@ def load_json(relative_path: str) -> dict[str, Any]:
 
 
 def validate_environment_lock(lock: dict[str, Any]) -> None:
+    validate_instance(load_json("schemas/environment-lock.schema.json"), lock)
     try:
         image = lock["vllm"]["image"]
         amd64_digest = lock["vllm"]["image_amd64_digest"]
@@ -66,6 +67,52 @@ def validate_fault_schedule(requests: list[dict[str, Any]]) -> None:
             raise ContractError(f"injection_id {injection_id!r} was reused with a different payload")
 
 
+def _validate_pair(events: list[dict[str, Any]], start_type: str, end_type: str) -> None:
+    starts = [index for index, event in enumerate(events) if event["event_type"] == start_type]
+    ends = [index for index, event in enumerate(events) if event["event_type"] == end_type]
+    if not starts and not ends:
+        return
+    if len(starts) != 1:
+        raise ContractError(f"expected exactly one {start_type}, found {len(starts)}")
+    if len(ends) != 1:
+        raise ContractError(f"expected exactly one {end_type}, found {len(ends)}")
+    if starts[0] >= ends[0]:
+        raise ContractError(f"{start_type} must precede {end_type}")
+
+
+def _validate_step_boundaries(events: list[dict[str, Any]]) -> None:
+    _validate_pair(events, "RECONCILIATION_STARTED", "RECONCILIATION_FINISHED")
+    _validate_pair(events, "PREFILL_STARTED", "PREFILL_FINISHED")
+
+    failure_signals = [
+        index
+        for index, event in enumerate(events)
+        if event["event_type"] == "PROCESS_EXITED"
+        or (
+            event["event_type"] == "FAULT_INJECTED"
+            and event["details"].get("action") == "TERMINATE_PROCESS"
+        )
+    ]
+    detections = [index for index, event in enumerate(events) if event["event_type"] == "CRASH_DETECTED"]
+    if failure_signals or detections:
+        if not failure_signals:
+            raise ContractError("CRASH_DETECTED is missing FAULT_INJECTED or PROCESS_EXITED")
+        if len(detections) != 1:
+            raise ContractError(f"expected exactly one CRASH_DETECTED, found {len(detections)}")
+        if min(failure_signals) >= detections[0]:
+            raise ContractError("failure signal must precede CRASH_DETECTED")
+
+        terminals = [
+            index
+            for index, event in enumerate(events)
+            if event["event_type"] in {"NEXT_TOKEN_EMITTED", "RECOVERY_ABSTAIN"}
+        ]
+        if len(terminals) != 1:
+            raise ContractError("CRASH_DETECTED requires one NEXT_TOKEN_EMITTED or RECOVERY_ABSTAIN")
+        if detections[0] >= terminals[0]:
+            raise ContractError("CRASH_DETECTED must precede its recovery terminal event")
+
+
 def validate_trace(events: list[dict[str, Any]]) -> None:
     if not events:
         raise ContractError("trace must contain at least one telemetry event")
@@ -94,15 +141,46 @@ def validate_trace(events: list[dict[str, Any]]) -> None:
     if monotonic_values != sorted(monotonic_values):
         raise ContractError("trace has non-monotonic monotonic_ns values")
 
+    sequences = [event["sequence"] for event in events]
+    if sequences != list(range(sequences[0], sequences[0] + len(sequences))):
+        raise ContractError("trace has a telemetry sequence gap or is out of order")
+
     event_ids = [event["event_id"] for event in events]
     if len(event_ids) != len(set(event_ids)):
         raise ContractError("trace contains duplicate event_id values")
+
+    previous = events[0]["worker"]
+    for event in events[1:]:
+        current = event["worker"]
+        if current["owner_epoch"] < previous["owner_epoch"]:
+            raise ContractError("worker owner_epoch decreased after replacement")
+        if current["instance_id"] == previous["instance_id"]:
+            if current["attempt"] != previous["attempt"] or current["owner_epoch"] != previous["owner_epoch"]:
+                raise ContractError("one worker instance changed attempt or owner_epoch")
+        elif current["attempt"] <= previous["attempt"] or current["owner_epoch"] <= previous["owner_epoch"]:
+            raise ContractError("replacement worker must increase attempt and owner_epoch")
+        previous = current
+
+    by_step: dict[str, list[dict[str, Any]]] = {}
+    for event in events:
+        by_step.setdefault(event["step_id"], []).append(event)
+    for step_events in by_step.values():
+        _validate_step_boundaries(step_events)
+
+    by_instance: dict[str, list[dict[str, Any]]] = {}
+    for event in events:
+        by_instance.setdefault(event["worker"]["instance_id"], []).append(event)
+    for instance_events in by_instance.values():
+        _validate_pair(instance_events, "WORKER_START_REQUESTED", "WORKER_READY")
 
 
 def main() -> int:
     lock = load_json("infra/environment.lock.json")
     validate_environment_lock(lock)
     print("validated environment lock")
+
+    validate_instance(load_json("schemas/environment-lock.schema.json"), lock)
+    print("validated environment lock schema")
 
     pairs = [
         ("schemas/fault-injection.schema.json", "examples/fault-injection.request.json", "fault injection example"),

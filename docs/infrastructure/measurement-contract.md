@@ -4,7 +4,7 @@ All timing boundaries are structured `TelemetryEvent` records validated by `sche
 
 ## Identity and clocks
 
-Every event carries experiment, run, task, step, configuration, model, hardware, and worker identity. Replacement attempts share a `worker.lineage_id` but receive a new `instance_id` and increasing `attempt`. A run cannot aggregate across configuration, model revision, hardware identity, worker lineage, or supervisor clock.
+Every event carries experiment, run, task, step, configuration, model, hardware, and worker identity. It also carries a gap-detecting `sequence`, `accepted_state_mutation`, and the worker's `owner_epoch`. Replacement attempts share a `worker.lineage_id` but receive a new `instance_id`, increasing `attempt`, and increasing `owner_epoch`. A run cannot aggregate across configuration, model revision, hardware identity, worker lineage, or supervisor clock.
 
 `wall_time` is RFC 3339 UTC for correlation. `monotonic_ns` from one supervisor `clock_id` defines durations, including intervals that span worker replacement. Events are persisted in monotonic order; missing, duplicate, or inverted boundaries invalidate the metric.
 

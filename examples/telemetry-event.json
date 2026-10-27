@@ -1,21 +1,24 @@
 {
   "schema_version": "1.0.0",
   "event_id": "evt-000001",
-  "event_type": "FAULT_INJECTED",
+  "event_type": "GPU_SAMPLE",
   "experiment_id": "exp-001",
   "run_id": "run-001",
   "task_id": "order-042",
   "step_id": "step-07",
   "injection_id": "exp-001:order-042:step-07:ack-loss",
   "configuration_id": "qwen3-4b-vllm-0.32.0-baseline",
+  "sequence": 1,
   "wall_time": "2026-10-26T19:00:00.123456Z",
   "monotonic_ns": 8132456000000,
   "clock_id": "supervisor-host-a-boot-31",
   "worker": {
     "lineage_id": "runner-a",
     "instance_id": "runner-a-attempt-1",
-    "attempt": 1
+    "attempt": 1,
+    "owner_epoch": 1
   },
+  "accepted_state_mutation": false,
   "hardware": {
     "host_id": "gpu-host-a",
     "gpu_model": "NVIDIA L40S",
@@ -28,8 +31,9 @@
     "dtype": "bfloat16"
   },
   "details": {
-    "boundary": "POST_TOOL_COMMIT_PRE_RESULT_LOG",
-    "action": "DROP_ACKNOWLEDGMENT",
-    "operation_id": "order-042:step-07"
+    "utilization_pct": 71.5,
+    "memory_used_bytes": 12163481600,
+    "power_watts": 214.3,
+    "temperature_c": 61.0
   }
 }
