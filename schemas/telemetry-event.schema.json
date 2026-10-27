@@ -95,6 +95,7 @@
     {
       "if": {"properties": {"event_type": {"const": "FAULT_INJECTED"}}, "required": ["event_type"]},
       "then": {
+        "required": ["injection_id"],
         "properties": {
           "injection_id": {"type": "string", "minLength": 1},
           "details": {

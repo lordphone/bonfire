@@ -67,50 +67,101 @@ def validate_fault_schedule(requests: list[dict[str, Any]]) -> None:
             raise ContractError(f"injection_id {injection_id!r} was reused with a different payload")
 
 
-def _validate_pair(events: list[dict[str, Any]], start_type: str, end_type: str) -> None:
-    starts = [index for index, event in enumerate(events) if event["event_type"] == start_type]
-    ends = [index for index, event in enumerate(events) if event["event_type"] == end_type]
-    if not starts and not ends:
-        return
-    if len(starts) != 1:
-        raise ContractError(f"expected exactly one {start_type}, found {len(starts)}")
-    if len(ends) != 1:
-        raise ContractError(f"expected exactly one {end_type}, found {len(ends)}")
-    if starts[0] >= ends[0]:
-        raise ContractError(f"{start_type} must precede {end_type}")
+def _validate_interruptible_pairs(events: list[dict[str, Any]], start_type: str, end_type: str) -> None:
+    open_start = False
+    for event in events:
+        event_type = event["event_type"]
+        if event_type == start_type:
+            if open_start:
+                raise ContractError(f"duplicate {start_type} before {end_type}")
+            open_start = True
+        elif event_type == end_type:
+            if not open_start:
+                raise ContractError(f"{end_type} has no preceding {start_type}")
+            open_start = False
+        elif event_type == "CRASH_DETECTED" and open_start:
+            open_start = False
+    if open_start:
+        raise ContractError(f"{start_type} is missing {end_type}")
+
+
+def _health_failure_signal(events: list[dict[str, Any]]) -> bool:
+    failures = [event for event in events if event["event_type"] == "HEALTH_CHECK_FAILED"]
+    if len(failures) < 3:
+        return False
+    last_three = failures[-3:]
+    gaps = [
+        later["monotonic_ns"] - earlier["monotonic_ns"]
+        for earlier, later in zip(last_three, last_three[1:])
+    ]
+    return all(900_000_000 <= gap <= 1_100_000_000 for gap in gaps)
+
+
+def _validate_crash_cycles(events: list[dict[str, Any]]) -> None:
+    detection_indexes = [index for index, event in enumerate(events) if event["event_type"] == "CRASH_DETECTED"]
+    signal_types = {"PROCESS_EXITED", "HEALTH_CHECK_FAILED"}
+    has_any_signal = any(
+        event["event_type"] in signal_types
+        or (event["event_type"] == "FAULT_INJECTED" and event["details"].get("action") == "TERMINATE_PROCESS")
+        for event in events
+    )
+    if has_any_signal and not detection_indexes:
+        raise ContractError("failure signal is missing CRASH_DETECTED")
+
+    previous_detection = -1
+    for detection_index in detection_indexes:
+        window = events[previous_detection + 1 : detection_index]
+        direct_signal = any(
+            event["event_type"] == "PROCESS_EXITED"
+            or (event["event_type"] == "FAULT_INJECTED" and event["details"].get("action") == "TERMINATE_PROCESS")
+            for event in window
+        )
+        if not direct_signal and not _health_failure_signal(window):
+            raise ContractError("CRASH_DETECTED is missing a process exit, termination fault, or three timed health failures")
+        previous_detection = detection_index
+
+    if detection_indexes:
+        terminal_indexes = [
+            index
+            for index, event in enumerate(events)
+            if index > detection_indexes[-1] and event["event_type"] in {"NEXT_TOKEN_EMITTED", "RECOVERY_ABSTAIN"}
+        ]
+        if len(terminal_indexes) != 1:
+            raise ContractError("final CRASH_DETECTED requires one NEXT_TOKEN_EMITTED or RECOVERY_ABSTAIN")
+
+
+def _validate_reconciliation_outcomes(events: list[dict[str, Any]]) -> None:
+    pending_unknown: str | None = None
+    halted = False
+    for event in events:
+        event_type = event["event_type"]
+        if halted and (event_type == "NEXT_TOKEN_EMITTED" or event["accepted_state_mutation"]):
+            raise ContractError("RECOVERY_ABSTAIN must halt before generation or state mutation")
+
+        if event_type == "RECONCILIATION_FINISHED":
+            outcome = event["details"]["outcome"]
+            if pending_unknown is not None:
+                raise ContractError("UNKNOWN must be followed by matching RECOVERY_ABSTAIN")
+            if outcome == "UNKNOWN":
+                pending_unknown = event["details"]["operation_id"]
+        elif event_type == "RECOVERY_ABSTAIN":
+            operation_id = event["details"]["operation_id"]
+            if pending_unknown is None or operation_id != pending_unknown:
+                raise ContractError("RECOVERY_ABSTAIN requires a matching UNKNOWN reconciliation outcome")
+            pending_unknown = None
+            halted = True
+        elif pending_unknown is not None and (event_type == "NEXT_TOKEN_EMITTED" or event["accepted_state_mutation"]):
+            raise ContractError("UNKNOWN must be followed by RECOVERY_ABSTAIN before resume or mutation")
+
+    if pending_unknown is not None:
+        raise ContractError("UNKNOWN must be followed by matching RECOVERY_ABSTAIN")
 
 
 def _validate_step_boundaries(events: list[dict[str, Any]]) -> None:
-    _validate_pair(events, "RECONCILIATION_STARTED", "RECONCILIATION_FINISHED")
-    _validate_pair(events, "PREFILL_STARTED", "PREFILL_FINISHED")
-
-    failure_signals = [
-        index
-        for index, event in enumerate(events)
-        if event["event_type"] == "PROCESS_EXITED"
-        or (
-            event["event_type"] == "FAULT_INJECTED"
-            and event["details"].get("action") == "TERMINATE_PROCESS"
-        )
-    ]
-    detections = [index for index, event in enumerate(events) if event["event_type"] == "CRASH_DETECTED"]
-    if failure_signals or detections:
-        if not failure_signals:
-            raise ContractError("CRASH_DETECTED is missing FAULT_INJECTED or PROCESS_EXITED")
-        if len(detections) != 1:
-            raise ContractError(f"expected exactly one CRASH_DETECTED, found {len(detections)}")
-        if min(failure_signals) >= detections[0]:
-            raise ContractError("failure signal must precede CRASH_DETECTED")
-
-        terminals = [
-            index
-            for index, event in enumerate(events)
-            if event["event_type"] in {"NEXT_TOKEN_EMITTED", "RECOVERY_ABSTAIN"}
-        ]
-        if len(terminals) != 1:
-            raise ContractError("CRASH_DETECTED requires one NEXT_TOKEN_EMITTED or RECOVERY_ABSTAIN")
-        if detections[0] >= terminals[0]:
-            raise ContractError("CRASH_DETECTED must precede its recovery terminal event")
+    _validate_interruptible_pairs(events, "RECONCILIATION_STARTED", "RECONCILIATION_FINISHED")
+    _validate_interruptible_pairs(events, "PREFILL_STARTED", "PREFILL_FINISHED")
+    _validate_crash_cycles(events)
+    _validate_reconciliation_outcomes(events)
 
 
 def validate_trace(events: list[dict[str, Any]]) -> None:
@@ -149,29 +200,34 @@ def validate_trace(events: list[dict[str, Any]]) -> None:
     if len(event_ids) != len(set(event_ids)):
         raise ContractError("trace contains duplicate event_id values")
 
+    active_events: list[dict[str, Any]] = []
     previous = events[0]["worker"]
+    active_events.append(events[0])
     for event in events[1:]:
         current = event["worker"]
         if current["owner_epoch"] < previous["owner_epoch"]:
-            raise ContractError("worker owner_epoch decreased after replacement")
+            if event["accepted_state_mutation"]:
+                raise ContractError("stale worker owner_epoch emitted an accepted state mutation")
+            continue
         if current["instance_id"] == previous["instance_id"]:
             if current["attempt"] != previous["attempt"] or current["owner_epoch"] != previous["owner_epoch"]:
                 raise ContractError("one worker instance changed attempt or owner_epoch")
         elif current["attempt"] <= previous["attempt"] or current["owner_epoch"] <= previous["owner_epoch"]:
             raise ContractError("replacement worker must increase attempt and owner_epoch")
         previous = current
+        active_events.append(event)
 
     by_step: dict[str, list[dict[str, Any]]] = {}
-    for event in events:
+    for event in active_events:
         by_step.setdefault(event["step_id"], []).append(event)
     for step_events in by_step.values():
         _validate_step_boundaries(step_events)
 
     by_instance: dict[str, list[dict[str, Any]]] = {}
-    for event in events:
+    for event in active_events:
         by_instance.setdefault(event["worker"]["instance_id"], []).append(event)
     for instance_events in by_instance.values():
-        _validate_pair(instance_events, "WORKER_START_REQUESTED", "WORKER_READY")
+        _validate_interruptible_pairs(instance_events, "WORKER_START_REQUESTED", "WORKER_READY")
 
 
 def main() -> int:

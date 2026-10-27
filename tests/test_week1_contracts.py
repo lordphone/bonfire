@@ -88,6 +88,16 @@ def test_ack_loss_requires_a_stable_operation_id():
     assert list(validator.iter_errors(request)), "ack loss without operation_id must be rejected"
 
 
+def test_post_commit_termination_requires_committed_precondition():
+    schema = load_json("schemas/fault-injection.schema.json")
+    validator = Draft202012Validator(schema)
+    request = load_json("examples/fault-injection.request.json")
+    request["action"] = "TERMINATE_PROCESS"
+    request["expected_precondition"] = "GENERATION_IN_PROGRESS"
+
+    assert list(validator.iter_errors(request))
+
+
 def test_fault_schedule_rejects_reused_identity_with_changed_payload():
     module = load_validator_module()
     request = load_json("examples/fault-injection.request.json")
@@ -177,7 +187,7 @@ def test_trace_validator_rejects_semantically_reversed_boundaries():
     )
     started["details"] = {"committed_prefix_tokens": 2048}
 
-    with pytest.raises(module.ContractError, match="PREFILL_STARTED.*PREFILL_FINISHED"):
+    with pytest.raises(module.ContractError, match="PREFILL_FINISHED.*PREFILL_STARTED"):
         module.validate_trace([finished, started])
 
 
@@ -195,6 +205,116 @@ def test_trace_validator_rejects_stale_owner_epoch_after_replacement():
 
     with pytest.raises(module.ContractError, match="owner_epoch"):
         module.validate_trace([first, replacement, stale])
+
+
+def test_trace_validator_retains_non_mutating_stale_diagnostics():
+    module = load_validator_module()
+    first = load_json("examples/telemetry-event.json")
+    replacement = copy.deepcopy(first)
+    replacement.update({"event_id": "evt-replacement", "monotonic_ns": first["monotonic_ns"] + 1})
+    replacement["sequence"] += 1
+    replacement["worker"].update({"instance_id": "runner-a-attempt-2", "attempt": 2, "owner_epoch": 2})
+    stale = copy.deepcopy(first)
+    stale.update({"event_id": "evt-stale", "event_type": "PROCESS_EXITED", "monotonic_ns": first["monotonic_ns"] + 2})
+    stale["sequence"] += 2
+    stale["details"] = {}
+
+    module.validate_trace([first, replacement, stale])
+
+
+def test_trace_validator_accepts_three_health_failures_as_crash_signal():
+    module = load_validator_module()
+    base = load_json("examples/telemetry-event.json")
+    events = []
+    for offset, event_type in enumerate(
+        ["HEALTH_CHECK_FAILED", "HEALTH_CHECK_FAILED", "HEALTH_CHECK_FAILED", "CRASH_DETECTED", "NEXT_TOKEN_EMITTED"]
+    ):
+        event = copy.deepcopy(base)
+        event.update(
+            {
+                "event_id": f"evt-health-{offset}",
+                "event_type": event_type,
+                "sequence": offset + 1,
+                "monotonic_ns": base["monotonic_ns"] + offset * 1_000_000_000,
+            }
+        )
+        event["details"] = {}
+        events.append(event)
+
+    module.validate_trace(events)
+
+
+def test_trace_validator_accepts_recovery_interrupted_by_another_crash():
+    module = load_validator_module()
+    base = load_json("examples/telemetry-event.json")
+    types_and_details = [
+        ("PROCESS_EXITED", {}),
+        ("CRASH_DETECTED", {}),
+        ("RECONCILIATION_STARTED", {"operation_id": "order-042:step-07"}),
+        ("PROCESS_EXITED", {}),
+        ("CRASH_DETECTED", {}),
+        ("RECONCILIATION_STARTED", {"operation_id": "order-042:step-07"}),
+        ("RECONCILIATION_FINISHED", {"operation_id": "order-042:step-07", "outcome": "COMMITTED"}),
+        ("PREFILL_STARTED", {"committed_prefix_tokens": 2048}),
+        ("PREFILL_FINISHED", {"committed_prefix_tokens": 2048}),
+        ("NEXT_TOKEN_EMITTED", {}),
+    ]
+    events = []
+    for offset, (event_type, details) in enumerate(types_and_details):
+        event = copy.deepcopy(base)
+        event.update(
+            {
+                "event_id": f"evt-recovery-{offset}",
+                "event_type": event_type,
+                "sequence": offset + 1,
+                "monotonic_ns": base["monotonic_ns"] + offset,
+            }
+        )
+        event["details"] = details
+        events.append(event)
+
+    module.validate_trace(events)
+
+
+def test_unknown_reconciliation_must_abstain_instead_of_resuming():
+    module = load_validator_module()
+    base = load_json("examples/telemetry-event.json")
+    started = copy.deepcopy(base)
+    started.update({"event_id": "evt-started", "event_type": "RECONCILIATION_STARTED"})
+    started["details"] = {"operation_id": "order-042:step-07"}
+    unknown = copy.deepcopy(base)
+    unknown.update(
+        {
+            "event_id": "evt-unknown",
+            "event_type": "RECONCILIATION_FINISHED",
+            "sequence": 2,
+            "monotonic_ns": base["monotonic_ns"] + 1,
+        }
+    )
+    unknown["details"] = {"operation_id": "order-042:step-07", "outcome": "UNKNOWN"}
+    resumed = copy.deepcopy(base)
+    resumed.update(
+        {
+            "event_id": "evt-resumed",
+            "event_type": "NEXT_TOKEN_EMITTED",
+            "sequence": 3,
+            "monotonic_ns": base["monotonic_ns"] + 2,
+        }
+    )
+    resumed["details"] = {}
+
+    with pytest.raises(module.ContractError, match="UNKNOWN.*RECOVERY_ABSTAIN"):
+        module.validate_trace([started, unknown, resumed])
+
+
+def test_recovery_abstain_requires_matching_unknown_outcome():
+    module = load_validator_module()
+    event = load_json("examples/telemetry-event.json")
+    event["event_type"] = "RECOVERY_ABSTAIN"
+    event["details"] = {"operation_id": "order-042:step-07", "reason": "outcome unqueryable"}
+
+    with pytest.raises(module.ContractError, match="UNKNOWN"):
+        module.validate_trace([event])
 
 
 def test_telemetry_schema_requires_prefill_token_count():
@@ -215,6 +335,16 @@ def test_telemetry_schema_requires_operation_id_for_ack_loss_event():
         "boundary": "POST_TOOL_COMMIT_PRE_RESULT_LOG",
         "action": "DROP_ACKNOWLEDGMENT",
     }
+
+    assert list(Draft202012Validator(schema).iter_errors(event))
+
+
+def test_telemetry_schema_requires_injection_id_for_fault_event():
+    schema = load_json("schemas/telemetry-event.schema.json")
+    event = load_json("examples/telemetry-event.json")
+    event["event_type"] = "FAULT_INJECTED"
+    event.pop("injection_id")
+    event["details"] = {"boundary": "DURING_GENERATION", "action": "TERMINATE_PROCESS"}
 
     assert list(Draft202012Validator(schema).iter_errors(event))
 
