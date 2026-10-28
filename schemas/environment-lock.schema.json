@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://outcomeserve.local/schemas/environment-lock.schema.json",
+  "title": "OutcomeServe EnvironmentLock",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "platform", "vllm", "runtime", "model", "serving", "validation"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "os_version", "architecture"],
+      "properties": {
+        "os": {"const": "ubuntu"},
+        "os_version": {"const": "24.04"},
+        "architecture": {"const": "linux/amd64"}
+      }
+    },
+    "vllm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "release_commit", "image_tag", "image_index_digest", "image_amd64_digest", "image"],
+      "properties": {
+        "version": {"const": "0.32.0"},
+        "release_commit": {"const": "5df63a7203cdb9328d824a27b682e77c7b9928be"},
+        "image_tag": {"const": "vllm/vllm-openai:v0.32.0-cu129-ubuntu2404"},
+        "image_index_digest": {"const": "sha256:9fea04bb6f2deb71db19b7cff586cefb56731a26884aa1cec60690d4e6463cf2"},
+        "image_amd64_digest": {"const": "sha256:f99aa709b3f873aa1e1aadf5c1db35970119e8af9b36fe15d2a667aae0ed005c"},
+        "image": {"const": "vllm/vllm-openai:v0.32.0-cu129-ubuntu2404@sha256:f99aa709b3f873aa1e1aadf5c1db35970119e8af9b36fe15d2a667aae0ed005c"}
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["python", "pytorch", "cuda_toolkit", "nccl", "minimum_nvidia_driver_linux"],
+      "properties": {
+        "python": {"const": "3.12"},
+        "pytorch": {"const": "2.13.0"},
+        "cuda_toolkit": {"const": "12.9.1"},
+        "nccl": {"const": "2.30.7"},
+        "minimum_nvidia_driver_linux": {"const": "575.51.03"}
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision", "dtype", "parameter_count", "native_context_length_tokens"],
+      "properties": {
+        "id": {"const": "Qwen/Qwen3-4B"},
+        "revision": {"const": "1cfa9a7208912126459214e8b04321603b3df60c"},
+        "dtype": {"const": "bfloat16"},
+        "parameter_count": {"const": 4000000000},
+        "native_context_length_tokens": {"const": 32768}
+      }
+    },
+    "serving": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enable_prefix_caching", "max_model_len", "tensor_parallel_size", "seed"],
+      "properties": {
+        "enable_prefix_caching": {"const": false},
+        "max_model_len": {"type": "integer", "minimum": 1, "maximum": 32768},
+        "tensor_parallel_size": {"const": 1},
+        "seed": {"type": "integer", "minimum": 0}
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pytest", "jsonschema", "json_schema_draft"],
+      "properties": {
+        "pytest": {"const": "9.1.1"},
+        "jsonschema": {"const": "4.26.0"},
+        "json_schema_draft": {"const": "2020-12"}
+      }
+    }
+  }
+}

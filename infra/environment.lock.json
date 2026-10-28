@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0.0",
+  "platform": {
+    "os": "ubuntu",
+    "os_version": "24.04",
+    "architecture": "linux/amd64"
+  },
+  "vllm": {
+    "version": "0.32.0",
+    "release_commit": "5df63a7203cdb9328d824a27b682e77c7b9928be",
+    "image_tag": "vllm/vllm-openai:v0.32.0-cu129-ubuntu2404",
+    "image_index_digest": "sha256:9fea04bb6f2deb71db19b7cff586cefb56731a26884aa1cec60690d4e6463cf2",
+    "image_amd64_digest": "sha256:f99aa709b3f873aa1e1aadf5c1db35970119e8af9b36fe15d2a667aae0ed005c",
+    "image": "vllm/vllm-openai:v0.32.0-cu129-ubuntu2404@sha256:f99aa709b3f873aa1e1aadf5c1db35970119e8af9b36fe15d2a667aae0ed005c"
+  },
+  "runtime": {
+    "python": "3.12",
+    "pytorch": "2.13.0",
+    "cuda_toolkit": "12.9.1",
+    "nccl": "2.30.7",
+    "minimum_nvidia_driver_linux": "575.51.03"
+  },
+  "model": {
+    "id": "Qwen/Qwen3-4B",
+    "revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+    "dtype": "bfloat16",
+    "parameter_count": 4000000000,
+    "native_context_length_tokens": 32768
+  },
+  "serving": {
+    "enable_prefix_caching": false,
+    "max_model_len": 16384,
+    "tensor_parallel_size": 1,
+    "seed": 20261026
+  },
+  "validation": {
+    "pytest": "9.1.1",
+    "jsonschema": "4.26.0",
+    "json_schema_draft": "2020-12"
+  }
+}

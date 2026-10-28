@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://outcomeserve.local/schemas/telemetry-event.schema.json",
+  "title": "OutcomeServe TelemetryEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "experiment_id",
+    "run_id",
+    "task_id",
+    "step_id",
+    "configuration_id",
+    "sequence",
+    "wall_time",
+    "monotonic_ns",
+    "clock_id",
+    "worker",
+    "accepted_state_mutation",
+    "hardware",
+    "model",
+    "details"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "event_id": {"type": "string", "minLength": 1},
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "WORKER_START_REQUESTED",
+        "WORKER_PROCESS_STARTED",
+        "WORKER_READY",
+        "HEALTH_CHECK_FAILED",
+        "PROCESS_EXITED",
+        "FAULT_INJECTED",
+        "CRASH_DETECTED",
+        "RECONCILIATION_STARTED",
+        "RECONCILIATION_FINISHED",
+        "PREFILL_STARTED",
+        "PREFILL_FINISHED",
+        "GENERATION_RESUMED",
+        "NEXT_TOKEN_EMITTED",
+        "RECOVERY_ABSTAIN",
+        "GPU_SAMPLE"
+      ]
+    },
+    "experiment_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "step_id": {"type": "string", "minLength": 1},
+    "injection_id": {"type": ["string", "null"]},
+    "configuration_id": {"type": "string", "minLength": 1},
+    "sequence": {"type": "integer", "minimum": 1},
+    "wall_time": {"type": "string", "format": "date-time"},
+    "monotonic_ns": {"type": "integer", "minimum": 0},
+    "clock_id": {"type": "string", "minLength": 1},
+    "worker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lineage_id", "instance_id", "attempt", "owner_epoch"],
+      "properties": {
+        "lineage_id": {"type": "string", "minLength": 1},
+        "instance_id": {"type": "string", "minLength": 1},
+        "attempt": {"type": "integer", "minimum": 1},
+        "owner_epoch": {"type": "integer", "minimum": 1}
+      }
+    },
+    "accepted_state_mutation": {"type": "boolean"},
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host_id", "gpu_model", "gpu_uuid", "driver_version"],
+      "properties": {
+        "host_id": {"type": "string", "minLength": 1},
+        "gpu_model": {"type": ["string", "null"]},
+        "gpu_uuid": {"type": ["string", "null"]},
+        "driver_version": {"type": ["string", "null"]}
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision", "dtype"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "dtype": {"type": "string", "minLength": 1}
+      }
+    },
+    "details": {"type": "object"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"event_type": {"const": "FAULT_INJECTED"}}, "required": ["event_type"]},
+      "then": {
+        "required": ["injection_id"],
+        "properties": {
+          "injection_id": {"type": "string", "minLength": 1},
+          "details": {
+            "type": "object",
+            "required": ["boundary", "action"],
+            "properties": {
+              "boundary": {
+                "enum": [
+                  "DURING_GENERATION",
+                  "PRE_DISPATCH",
+                  "POST_TOOL_COMMIT_PRE_RESULT_LOG",
+                  "POST_CONTEXT_COMMIT",
+                  "DURING_RECOVERY"
+                ]
+              },
+              "action": {"enum": ["TERMINATE_PROCESS", "DROP_ACKNOWLEDGMENT"]},
+              "operation_id": {"type": "string", "minLength": 1}
+            },
+            "allOf": [
+              {
+                "if": {"properties": {"action": {"const": "DROP_ACKNOWLEDGMENT"}}, "required": ["action"]},
+                "then": {"required": ["operation_id"]}
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"event_type": {"enum": ["PREFILL_STARTED", "PREFILL_FINISHED"]}}, "required": ["event_type"]},
+      "then": {
+        "properties": {
+          "details": {
+            "type": "object",
+            "required": ["committed_prefix_tokens"],
+            "properties": {"committed_prefix_tokens": {"type": "integer", "minimum": 0}}
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"event_type": {"const": "RECONCILIATION_FINISHED"}}, "required": ["event_type"]},
+      "then": {
+        "properties": {
+          "details": {
+            "type": "object",
+            "required": ["outcome", "operation_id"],
+            "properties": {
+              "outcome": {"enum": ["COMMITTED", "NOT_COMMITTED", "UNKNOWN"]},
+              "operation_id": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"event_type": {"const": "RECOVERY_ABSTAIN"}}, "required": ["event_type"]},
+      "then": {
+        "properties": {
+          "details": {
+            "type": "object",
+            "required": ["operation_id", "reason"],
+            "properties": {
+              "operation_id": {"type": "string", "minLength": 1},
+              "reason": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"event_type": {"const": "GPU_SAMPLE"}}, "required": ["event_type"]},
+      "then": {
+        "properties": {
+          "details": {
+            "type": "object",
+            "required": ["utilization_pct", "memory_used_bytes", "power_watts", "temperature_c"],
+            "properties": {
+              "utilization_pct": {"type": "number", "minimum": 0, "maximum": 100},
+              "memory_used_bytes": {"type": "integer", "minimum": 0},
+              "power_watts": {"type": "number", "minimum": 0},
+              "temperature_c": {"type": "number"}
+            }
+          }
+        }
+      }
+    }
+  ]
+}
