@@ -12,6 +12,7 @@ import sys
 
 from outcomeserve.recovery.stubs import SqliteLog, SqliteToolService
 from outcomeserve.runner.agent import Action, Boundary, FaultPlan, Runner, scripted_trace
+from outcomeserve.runner.telemetry import JsonlTelemetry, WorkerIdentity, cpu_run_context
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -23,6 +24,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--crash-at", choices=[b.value for b in Boundary])
     parser.add_argument("--crash-step", type=int)
     parser.add_argument("--action", default=Action.TERMINATE_PROCESS.value, choices=[a.value for a in Action])
+    parser.add_argument("--telemetry", help="append C4 events to this JSONL file")
+    parser.add_argument("--run-id")
+    parser.add_argument("--lineage")
+    parser.add_argument("--attempt", type=int, help="defaults to the task's owner_epoch")
+    parser.add_argument("--recovery-step", type=int, help="step the previous attempt crashed in (set by the supervisor)")
     args = parser.parse_args(argv)
 
     fault = None
@@ -31,8 +37,25 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--crash-at requires --crash-step")
         fault = FaultPlan(Boundary(args.crash_at), args.crash_step, Action(args.action))
 
+    log = SqliteLog(args.db)
+    epoch = log.current_epoch(args.task)
+    lineage = args.lineage or f"runner-{args.task}"
+    attempt = args.attempt or max(epoch, 1)
+    worker = WorkerIdentity(lineage, f"{lineage}-attempt-{attempt}", attempt, epoch)
+    telemetry = None
+    if args.telemetry:
+        run_id = args.run_id or f"run-{args.task}"
+        telemetry = JsonlTelemetry(args.telemetry, cpu_run_context(args.task, run_id, f"{args.trace}:{args.steps}"))
+
     outcome = Runner(
-        SqliteLog(args.db), SqliteToolService(args.db), args.task, scripted_trace(args.trace, args.steps), fault
+        log,
+        SqliteToolService(args.db),
+        args.task,
+        scripted_trace(args.trace, args.steps),
+        fault,
+        telemetry=telemetry,
+        worker=worker,
+        recovery_step=args.recovery_step,
     ).run()
     print(json.dumps({"status": outcome.status, "next_step": outcome.next_step, "token_ids": outcome.token_ids}))
     return 0 if outcome.status == "COMPLETED" else 3

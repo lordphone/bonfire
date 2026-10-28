@@ -106,3 +106,5 @@ class TaskState:
     next_step: int = 0
     token_ids: list[int] = field(default_factory=list)
     abstained: bool = False
+    recovered: bool = False  # the log already held records for this task
+    reconciled_step: int | None = None  # the open step this recovery closed, if any
