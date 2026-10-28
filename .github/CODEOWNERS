@@ -1,0 +1,31 @@
+# Owner and reviewer per module, from docs/work-distribution.md.
+# GitHub requests review from everyone listed except the PR author,
+# so each line names the owner and the reviewer.
+# Shirley: @kikyou7777 · Lordphone: @lordphone · Victoria: @VictoriaZQY
+
+# Shirley
+/outcomeserve/runner/      @kikyou7777 @VictoriaZQY
+/outcomeserve/recovery/    @kikyou7777 @VictoriaZQY
+/analysis/costmodel/       @kikyou7777 @lordphone
+
+# Lordphone
+/outcomeserve/serving/     @lordphone @kikyou7777
+/outcomeserve/supervisor/  @lordphone @VictoriaZQY
+/outcomeserve/faults/      @lordphone @VictoriaZQY
+/outcomeserve/telemetry/   @lordphone @VictoriaZQY
+/schemas/                  @lordphone @VictoriaZQY
+/infra/                    @lordphone @kikyou7777
+/docs/infrastructure/      @lordphone @kikyou7777
+/scripts/validate_week1_contracts.py  @lordphone @VictoriaZQY
+
+# Victoria
+/outcomeserve/tools/       @VictoriaZQY @kikyou7777
+/outcomeserve/log/         @VictoriaZQY @kikyou7777
+/outcomeserve/verify/      @VictoriaZQY @lordphone
+/workloads/                @VictoriaZQY @kikyou7777
+/analysis/pipeline/        @VictoriaZQY @lordphone
+
+# Project-wide
+/.github/                  @kikyou7777 @lordphone @VictoriaZQY
+/docs/work-distribution.md @kikyou7777 @lordphone @VictoriaZQY
+/pyproject.toml            @kikyou7777 @lordphone @VictoriaZQY

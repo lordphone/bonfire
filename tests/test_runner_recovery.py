@@ -11,7 +11,7 @@ from outcomeserve.recovery.interfaces import RecordType, StaleEpochError, ToolOu
 from outcomeserve.recovery.opid import fingerprint, op_id
 from outcomeserve.recovery.stubs import SqliteLog, SqliteToolService
 from outcomeserve.runner.agent import Action, Boundary, FaultPlan, Runner, scripted_trace
-from outcomeserve.runner.telemetry import JsonlTelemetry, WorkerIdentity, cpu_run_context, read_events
+from outcomeserve.telemetry import JsonlTelemetry, WorkerIdentity, cpu_run_context, read_events
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -245,3 +245,27 @@ def test_abstain_telemetry_passes_the_week1_trace_validator(tmp_path):
     load_validator().validate_trace(events)
     tail = [(e["event_type"], e["details"].get("outcome")) for e in events[-2:]]
     assert tail == [("RECONCILIATION_FINISHED", "UNKNOWN"), ("RECOVERY_ABSTAIN", None)]
+
+
+def test_readme_demo_writes_schema_valid_events_with_distinct_attempts(tmp_path):
+    from jsonschema import Draft202012Validator
+
+    db, events_path = tmp_path / "state.sqlite", tmp_path / "events.jsonl"
+    common = ["--telemetry", str(events_path), "--fence"]
+    first = launch(db, *common, "--crash-at", Boundary.POST_TOOL_COMMIT_PRE_RESULT_LOG.value, "--crash-step", "3")
+    second = launch(db, *common, "--recovery-step", "3")
+
+    assert first.returncode == -signal.SIGKILL
+    assert second.returncode == 0 and json.loads(second.stdout)["status"] == "COMPLETED"
+    schema = json.loads((ROOT / "schemas" / "telemetry-event.schema.json").read_text(encoding="utf-8"))
+    validator = Draft202012Validator(schema)
+    events = read_events(events_path)
+    for event in events:
+        validator.validate(event)
+    assert {(e["worker"]["attempt"], e["worker"]["owner_epoch"]) for e in events} == {(1, 1), (2, 2)}
+
+
+def test_telemetry_without_an_epoch_is_refused(tmp_path):
+    proc = launch(tmp_path / "state.sqlite", "--telemetry", str(tmp_path / "events.jsonl"))
+    assert proc.returncode == 2
+    assert "--fence" in proc.stderr

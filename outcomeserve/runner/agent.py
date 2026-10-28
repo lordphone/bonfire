@@ -31,7 +31,7 @@ from outcomeserve.recovery.interfaces import (
     ToolService,
 )
 from outcomeserve.recovery.opid import fingerprint, op_id
-from outcomeserve.runner.telemetry import NullTelemetry, Telemetry, WorkerIdentity
+from outcomeserve.telemetry import NullTelemetry, Telemetry, WorkerIdentity
 
 
 class Boundary(str, Enum):
