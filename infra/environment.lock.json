@@ -29,7 +29,7 @@
   },
   "serving": {
     "enable_prefix_caching": false,
-    "max_model_len": 16384,
+    "max_model_len": 32768,
     "tensor_parallel_size": 1,
     "seed": 20261026
   },

@@ -15,11 +15,24 @@
 | NCCL | 2.30.7 |
 | Model | `Qwen/Qwen3-4B` at revision `1cfa9a7208912126459214e8b04321603b3df60c` |
 | Precision | BF16 |
-| Measured context limit | 16,384 tokens |
+| Measured context limit | 32,768 tokens |
 
-The preferred accelerator is one NVIDIA L40S 48 GB or A100 40 GB. A 24 GB NVIDIA GPU is the fallback for the 4B model. The canonical path passes the host GPU directly into the pinned container. Compatibility mode may use a newer host driver that supports CUDA 12.9 containers, but it must not rebuild or modify the image; record the actual GPU UUID, model, driver, and container digest in telemetry.
+## Hardware
 
-Prefix caching is explicitly disabled for recovery measurements. Otherwise a cache hit can make re-prefill appear cheaper than reconstructing state from the committed prefix. Tensor parallelism is fixed at one for the baseline.
+Every reported GPU number comes from PSC Bridges-2.
+
+| Role | Node type | Slurm request |
+| --- | --- | --- |
+| Primary | NVIDIA H100 SXM 80 GB (`h100-80`) | `--gpus=h100-80:1`; warm replica uses `:2` |
+| Fallback | NVIDIA L40S 48 GB (`l40s-48`) | `--gpus=l40s-48:1` |
+
+Use the `GPU-shared` partition (at most 4 GPUs and 48 hours per job). Always name the GPU type, or the job can land on a V100. V100 nodes are not used: they lack BF16, and the pinned vLLM release reportedly does not support sm_70. L40S results are reported separately and never mixed with H100 results.
+
+PSC does not allow Docker. Convert the pinned image to a Singularity/Apptainer `.sif` by digest, and pass the GPU in with `--nv`; the container must not be rebuilt or modified. Copy model weights to node-local storage (`$LOCAL`) before measuring cold start; a cold start from the shared filesystem is measured separately. Telemetry records the actual GPU UUID, model, driver, container digest, node name, and Slurm job ID.
+
+## Prefix caching
+
+Automatic prefix caching (APC) is an experiment factor, not a fixed setting. The lock pins it off as the baseline; a run that enables it must declare `enable_prefix_caching=true` as an explicit runtime override, so it gets a distinct `configuration_id`. APC on and off results are reported side by side, never pooled. Tensor parallelism is fixed at one for the baseline.
 
 ## Preflight gate
 
