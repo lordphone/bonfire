@@ -3,3 +3,6 @@
 __pycache__/
 .pytest_cache/
 .superpowers/
+*.sqlite
+*.jsonl
+*.egg-info/
