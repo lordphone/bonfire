@@ -12,7 +12,7 @@ import sys
 
 from outcomeserve.recovery.stubs import SqliteLog, SqliteToolService
 from outcomeserve.runner.agent import Action, Boundary, FaultPlan, Runner, scripted_trace
-from outcomeserve.runner.telemetry import JsonlTelemetry, WorkerIdentity, cpu_run_context
+from outcomeserve.telemetry import JsonlTelemetry, WorkerIdentity, cpu_run_context
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -29,6 +29,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lineage")
     parser.add_argument("--attempt", type=int, help="defaults to the task's owner_epoch")
     parser.add_argument("--recovery-step", type=int, help="step the previous attempt crashed in (set by the supervisor)")
+    parser.add_argument(
+        "--fence", action="store_true", help="advance owner_epoch before running, as the supervisor would"
+    )
     args = parser.parse_args(argv)
 
     fault = None
@@ -38,7 +41,9 @@ def main(argv: list[str] | None = None) -> int:
         fault = FaultPlan(Boundary(args.crash_at), args.crash_step, Action(args.action))
 
     log = SqliteLog(args.db)
-    epoch = log.current_epoch(args.task)
+    epoch = log.advance_epoch(args.task) if args.fence else log.current_epoch(args.task)
+    if args.telemetry and epoch < 1:
+        parser.error("telemetry needs owner_epoch >= 1: pass --fence or start under a supervisor")
     lineage = args.lineage or f"runner-{args.task}"
     attempt = args.attempt or max(epoch, 1)
     worker = WorkerIdentity(lineage, f"{lineage}-attempt-{attempt}", attempt, epoch)
