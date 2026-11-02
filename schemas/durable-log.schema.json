@@ -1,0 +1,368 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://outcomeserve.local/schemas/durable-log.schema.json",
+  "title": "OutcomeServe C1 DurableLogRecord",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "record_id",
+        "task_id",
+        "step_id",
+        "op_id",
+        "owner_epoch",
+        "sequence",
+        "model_revision",
+        "record_type",
+        "payload",
+        "context_spec_id"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.1.0"
+        },
+        "record_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_epoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "model_revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "record_type": {
+          "const": "STEP_PREPARED"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tool_name",
+            "args",
+            "request_fingerprint",
+            "generated_token_ids",
+            "generation_prompt_token_ids"
+          ],
+          "properties": {
+            "tool_name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "args": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/argumentValue"
+              }
+            },
+            "request_fingerprint": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "generated_token_ids": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "generation_prompt_token_ids": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "context_spec_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "record_id",
+        "task_id",
+        "step_id",
+        "op_id",
+        "owner_epoch",
+        "sequence",
+        "model_revision",
+        "record_type",
+        "payload",
+        "context_spec_id"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.1.0"
+        },
+        "record_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_epoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "model_revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "record_type": {
+          "const": "TOOL_RESULT_COMMITTED"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "request_fingerprint",
+            "result",
+            "commit_receipt"
+          ],
+          "properties": {
+            "request_fingerprint": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "result": {
+              "type": "object"
+            },
+            "commit_receipt": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "context_spec_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "record_id",
+        "task_id",
+        "step_id",
+        "op_id",
+        "owner_epoch",
+        "sequence",
+        "model_revision",
+        "record_type",
+        "payload",
+        "context_spec_id"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.1.0"
+        },
+        "record_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_epoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "model_revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "record_type": {
+          "const": "CONTEXT_COMMITTED"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "token_ids",
+            "result_record_id"
+          ],
+          "properties": {
+            "token_ids": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "result_record_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "context_spec_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "record_id",
+        "task_id",
+        "step_id",
+        "op_id",
+        "owner_epoch",
+        "sequence",
+        "model_revision",
+        "record_type",
+        "payload",
+        "context_spec_id"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.1.0"
+        },
+        "record_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_epoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "model_revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "record_type": {
+          "const": "RECOVERY_ABSTAIN"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "outcome",
+            "reason"
+          ],
+          "properties": {
+            "outcome": {
+              "const": "UNKNOWN"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "context_spec_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "argumentValue": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/argumentValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/argumentValue"
+          }
+        }
+      ]
+    }
+  }
+}

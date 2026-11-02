@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OutcomeServe supervisor measurement stream",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "configuration_id",
+    "clock_id",
+    "sequence",
+    "event_type",
+    "monotonic_ns",
+    "details"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.1.0"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "configuration_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "clock_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "event_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "monotonic_ns": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "details": {
+      "type": "object"
+    },
+    "clock_source": {
+      "const": "perf_counter"
+    },
+    "clock_resolution_seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "injection_id": "exp-001:order-042:step-07:ack-loss",
   "experiment_id": "exp-001",
   "task_id": "order-042",
@@ -13,5 +13,6 @@
   "one_shot": true,
   "metadata": {
     "operation_id": "order-042:step-07"
-  }
+  },
+  "fault_domain": "tool_response"
 }

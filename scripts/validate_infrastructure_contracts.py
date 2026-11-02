@@ -42,8 +42,8 @@ def validate_environment_lock(lock: dict[str, Any]) -> None:
         raise ContractError("vLLM image must be pinned to the linux/amd64 digest")
     if not GIT_SHA.fullmatch(release_commit) or not GIT_SHA.fullmatch(revision):
         raise ContractError("release and model revisions must be 40-character Git commits")
-    if prefix_caching is not False:
-        raise ContractError("prefix caching must be disabled for re-prefill measurements")
+    if type(prefix_caching) is not bool:
+        raise ContractError("prefix caching must be an explicit experiment factor")
 
 
 def validate_instance(schema: dict[str, Any], instance: dict[str, Any]) -> None:

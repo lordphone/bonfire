@@ -17,8 +17,8 @@ def load_json(relative_path: str) -> dict:
 
 
 def load_validator_module():
-    path = ROOT / "scripts" / "validate_week1_contracts.py"
-    spec = importlib.util.spec_from_file_location("week1_validator", path)
+    path = ROOT / "scripts" / "validate_infrastructure_contracts.py"
+    spec = importlib.util.spec_from_file_location("infrastructure_validator", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -483,9 +483,9 @@ def test_telemetry_schema_requires_machine_readable_reconciliation_outcome():
     assert list(Draft202012Validator(schema).iter_errors(event))
 
 
-def test_cli_validates_all_week1_contracts():
+def test_cli_validates_all_infrastructure_contracts():
     result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "validate_week1_contracts.py")],
+        [sys.executable, str(ROOT / "scripts" / "validate_infrastructure_contracts.py")],
         cwd=ROOT,
         text=True,
         capture_output=True,

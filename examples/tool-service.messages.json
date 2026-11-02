@@ -1,0 +1,95 @@
+[
+  {
+    "schema_version": "1.0.0",
+    "kind": "capabilities",
+    "tool_name": "decrement_inventory",
+    "idempotent_business_operation": false,
+    "supports_deduplication": true,
+    "supports_outcome_query": true,
+    "query_consistency": "linearizable",
+    "deduplication_window_seconds": null,
+    "atomic_effect_and_result": true
+  },
+  {
+    "schema_version": "1.0.0",
+    "kind": "submit",
+    "task_id": "example-run-001:order-042",
+    "step_id": "step-01",
+    "op_id": "example-run-001:order-042:step-01",
+    "request_fingerprint": "sha256:fbc667e9228baf1c39f88c6a72f2717d1ff065e4954904186d77ee76464195b8",
+    "owner_epoch": 1,
+    "tool_name": "decrement_inventory",
+    "args": {
+      "quantity": 1,
+      "sku": "item-01"
+    }
+  },
+  {
+    "schema_version": "1.0.0",
+    "kind": "query",
+    "task_id": "example-run-001:order-042",
+    "step_id": "step-01",
+    "op_id": "example-run-001:order-042:step-01",
+    "request_fingerprint": "sha256:fbc667e9228baf1c39f88c6a72f2717d1ff065e4954904186d77ee76464195b8",
+    "owner_epoch": 1
+  },
+  {
+    "schema_version": "1.0.0",
+    "kind": "response",
+    "task_id": "example-run-001:order-042",
+    "step_id": "step-01",
+    "op_id": "example-run-001:order-042:step-01",
+    "request_fingerprint": "sha256:fbc667e9228baf1c39f88c6a72f2717d1ff065e4954904186d77ee76464195b8",
+    "owner_epoch": 1,
+    "status": "COMMITTED",
+    "result": {
+      "sku": "item-01",
+      "remaining": 9
+    },
+    "commit_receipt": "tx-0001"
+  },
+  {
+    "schema_version": "1.0.0",
+    "kind": "response",
+    "task_id": "example-run-001:order-042",
+    "step_id": "step-01",
+    "op_id": "example-run-001:order-042:step-01",
+    "request_fingerprint": "sha256:fbc667e9228baf1c39f88c6a72f2717d1ff065e4954904186d77ee76464195b8",
+    "owner_epoch": 1,
+    "status": "NOT_COMMITTED",
+    "reason": "authoritative absence before dispatch"
+  },
+  {
+    "schema_version": "1.0.0",
+    "kind": "response",
+    "task_id": "example-run-001:order-042",
+    "step_id": "step-01",
+    "op_id": "example-run-001:order-042:step-01",
+    "request_fingerprint": "sha256:fbc667e9228baf1c39f88c6a72f2717d1ff065e4954904186d77ee76464195b8",
+    "owner_epoch": 1,
+    "status": "UNKNOWN",
+    "reason": "external outcome cannot be queried"
+  },
+  {
+    "schema_version": "1.0.0",
+    "kind": "response",
+    "task_id": "example-run-001:order-042",
+    "step_id": "step-01",
+    "op_id": "example-run-001:order-042:step-01",
+    "request_fingerprint": "sha256:fbc667e9228baf1c39f88c6a72f2717d1ff065e4954904186d77ee76464195b8",
+    "owner_epoch": 1,
+    "status": "STALE_EPOCH",
+    "current_epoch": 2
+  },
+  {
+    "schema_version": "1.0.0",
+    "kind": "response",
+    "task_id": "example-run-001:order-042",
+    "step_id": "step-01",
+    "op_id": "example-run-001:order-042:step-01",
+    "request_fingerprint": "sha256:fbc667e9228baf1c39f88c6a72f2717d1ff065e4954904186d77ee76464195b8",
+    "owner_epoch": 1,
+    "status": "FINGERPRINT_MISMATCH",
+    "stored_fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  }
+]

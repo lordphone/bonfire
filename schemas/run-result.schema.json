@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OutcomeServe experiment result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "backend",
+    "method",
+    "valid",
+    "passed",
+    "fault_applied",
+    "invalid_reasons",
+    "resources"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.1.0"
+    },
+    "backend": {
+      "enum": [
+        "scripted_cpu",
+        "vllm"
+      ]
+    },
+    "method": {
+      "enum": [
+        "outcomeserve",
+        "restart",
+        "naive_retry",
+        "transcript_checkpoint"
+      ]
+    },
+    "valid": {
+      "type": "boolean"
+    },
+    "passed": {
+      "type": "boolean"
+    },
+    "fault_applied": {
+      "type": "boolean"
+    },
+    "invalid_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "task_success": {
+      "type": "boolean"
+    },
+    "fault_to_verified_seconds": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "task_to_verified_seconds": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "resources": {
+      "type": "object",
+      "required": [
+        "measurement_valid"
+      ],
+      "properties": {
+        "measurement_valid": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "passed": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "task_success",
+          "task_to_verified_seconds"
+        ],
+        "properties": {
+          "valid": {
+            "const": true
+          },
+          "task_success": {
+            "const": true
+          },
+          "task_to_verified_seconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "invalid_reasons": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ]
+}
