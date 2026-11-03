@@ -1,0 +1,122 @@
+[
+ {
+  "attempt": 1,
+  "startup_s": 86.166782219,
+  "weights_load_s": 1.99,
+  "model_load_s": 3.746648,
+  "torch_compile_s": 0.08,
+  "cuda_graph_s": 70.0,
+  "engine_init_s": 71.68,
+  "rep": 0,
+  "weights": "nvme",
+  "compile_cache": "warm"
+ },
+ {
+  "attempt": 2,
+  "startup_s": 20.501735959,
+  "weights_load_s": 0.41,
+  "model_load_s": 2.115558,
+  "torch_compile_s": 0.08,
+  "cuda_graph_s": 5.0,
+  "engine_init_s": 7.73,
+  "rep": 0,
+  "weights": "page_cache",
+  "compile_cache": "warm"
+ },
+ {
+  "attempt": 3,
+  "startup_s": 22.25861627,
+  "weights_load_s": 2.04,
+  "model_load_s": 3.85159,
+  "torch_compile_s": 0.08,
+  "cuda_graph_s": 5.0,
+  "engine_init_s": 7.76,
+  "rep": 1,
+  "weights": "nvme",
+  "compile_cache": "warm"
+ },
+ {
+  "attempt": 4,
+  "startup_s": 20.572155825,
+  "weights_load_s": 0.41,
+  "model_load_s": 2.127324,
+  "torch_compile_s": 0.08,
+  "cuda_graph_s": 5.0,
+  "engine_init_s": 7.81,
+  "rep": 1,
+  "weights": "page_cache",
+  "compile_cache": "warm"
+ },
+ {
+  "attempt": 5,
+  "startup_s": 22.175528319,
+  "weights_load_s": 2.03,
+  "model_load_s": 3.822615,
+  "torch_compile_s": 0.08,
+  "cuda_graph_s": 5.0,
+  "engine_init_s": 7.76,
+  "rep": 2,
+  "weights": "nvme",
+  "compile_cache": "warm"
+ },
+ {
+  "attempt": 6,
+  "startup_s": 20.453253356,
+  "weights_load_s": 0.41,
+  "model_load_s": 2.119106,
+  "torch_compile_s": 0.08,
+  "cuda_graph_s": 5.0,
+  "engine_init_s": 7.76,
+  "rep": 2,
+  "weights": "page_cache",
+  "compile_cache": "warm"
+ },
+ {
+  "attempt": 7,
+  "startup_s": 22.113177337,
+  "weights_load_s": 2.03,
+  "model_load_s": 3.82364,
+  "torch_compile_s": 0.08,
+  "cuda_graph_s": 5.0,
+  "engine_init_s": 7.76,
+  "rep": 3,
+  "weights": "nvme",
+  "compile_cache": "warm"
+ },
+ {
+  "attempt": 8,
+  "startup_s": 20.436769895,
+  "weights_load_s": 0.41,
+  "model_load_s": 2.11885,
+  "torch_compile_s": 0.08,
+  "cuda_graph_s": 5.0,
+  "engine_init_s": 7.74,
+  "rep": 3,
+  "weights": "page_cache",
+  "compile_cache": "warm"
+ },
+ {
+  "attempt": 9,
+  "startup_s": 22.261532014,
+  "weights_load_s": 2.02,
+  "model_load_s": 3.81719,
+  "torch_compile_s": 0.08,
+  "cuda_graph_s": 5.0,
+  "engine_init_s": 7.81,
+  "rep": 4,
+  "weights": "nvme",
+  "compile_cache": "warm"
+ },
+ {
+  "attempt": 10,
+  "startup_s": 20.401973598,
+  "weights_load_s": 0.41,
+  "model_load_s": 2.115738,
+  "torch_compile_s": 0.08,
+  "cuda_graph_s": 5.0,
+  "engine_init_s": 7.7,
+  "rep": 4,
+  "weights": "page_cache",
+  "compile_cache": "warm"
+ }
+]
