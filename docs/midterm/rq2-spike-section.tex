@@ -13,19 +13,18 @@
 \vskip 0.10in
 \centering
 \small
-\begin{tabular}{lr}
+\begin{tabular}{@{}lr@{}}
 \toprule
 Measurement & Result \\
 \midrule
 Cold start, warm caches & 20.5~s \\
-Cold start, empty driver JIT cache & 86~s \\
-Prefill 2K / 8K / 16K, APC off & 0.09 / 0.45 / 1.09~s \\
+Cold start, empty JIT cache & 86~s \\
+Prefill 2K / 8K / 16K & 0.09 / 0.45 / 1.09~s \\
 Prefill 16K, APC hit & 0.042~s \\
 Decode, single stream & 161~tok/s \\
 \midrule
-Inference kill: crash $\to$ next token & 21.6~s \\
-Runner kill, APC off & 0.63~s \\
-Runner kill, APC on & 0.073~s \\
+Inference kill $\to$ next token & 21.6~s \\
+Runner kill, APC off / on & 0.63 / 0.073~s \\
 \bottomrule
 \end{tabular}
 \vskip -0.05in

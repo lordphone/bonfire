@@ -143,7 +143,8 @@ def fig_recovery(groups: dict[str, list[dict]], path: Path):
     panels = [[n for n in groups if n.startswith("Inference") and groups[n]],
               [n for n in groups if n.startswith("Runner") and groups[n]]]
     panels = [ns for ns in panels if ns]
-    fig, axes = plt.subplots(1, len(panels), figsize=(6.8, 3.6), dpi=200,
+    # sized for one column of a two-column paper (3.3 in), so text stays legible
+    fig, axes = plt.subplots(1, len(panels), figsize=(3.4, 2.7), dpi=300,
                              gridspec_kw={"width_ratios": [len(ns) for ns in panels]})
     axes = axes if len(panels) > 1 else [axes]
     for ax, names, unit, scale in zip(axes, panels, ("s", "ms"), (1000, 1)):
@@ -155,13 +156,15 @@ def fig_recovery(groups: dict[str, list[dict]], path: Path):
             bottoms = [b + v for b, v in zip(bottoms, vals)]
         for x, b in enumerate(bottoms):
             ax.text(x, b, f"{b:.1f} {unit}" if unit == "s" else f"{b:.0f} {unit}",
-                    ha="center", va="bottom", color=INK, fontsize=8)
+                    ha="center", va="bottom", color=INK, fontsize=6.5)
         ax.margins(y=0.12)
-        _style(ax, f"Median fault → next token ({unit})")
-        ax.tick_params(axis="x", labelsize=7)
+        _style(ax, f"Fault → next token ({unit})")
+        ax.yaxis.label.set_size(7)
+        ax.tick_params(axis="both", labelsize=6)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, frameon=False, fontsize=7, loc="upper center", ncol=5)
-    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    fig.legend(handles, labels, frameon=False, fontsize=6, loc="upper center", ncol=3,
+               handlelength=1.2, columnspacing=1.0)
+    fig.tight_layout(rect=(0, 0, 1, 0.86), w_pad=0.8)
     fig.savefig(path)
     plt.close(fig)
 
