@@ -112,8 +112,8 @@ class GpuSampler:
                           apc=em.base["configuration_id"].endswith("apc-on"))
         self.wk = wk
         self.proc = subprocess.Popen(
-            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,power.draw,temperature.gpu,clocks.sm",
-             "--format=csv,noheader,nounits", "-lms", "200"],
+            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,power.draw,temperature.gpu,clocks.sm,"
+             "clocks_event_reasons.active", "--format=csv,noheader,nounits", "-lms", "200"],
             stdout=subprocess.PIPE, text=True)
         self.t = threading.Thread(target=self._run, daemon=True)
         self.t.start()
@@ -121,12 +121,16 @@ class GpuSampler:
     def _run(self):
         for line in self.proc.stdout:
             try:
-                util, mem, power, temp, sm = (float(x) for x in line.split(","))
+                *vals, reasons = (x.strip() for x in line.split(","))
+                util, mem, power, temp, sm = (float(x) for x in vals)
+                reasons = int(reasons, 16)
             except ValueError:
                 continue
+            # clock event reasons bitmask: 0x4 SW power cap, 0x8 HW slowdown, 0x20/0x40 SW/HW thermal
             self.em.emit("GPU_SAMPLE", self.wk, details={
                 "utilization_pct": util, "memory_used_bytes": int(mem * 1024 * 1024),
-                "power_watts": power, "temperature_c": temp, "sm_clock_mhz": sm})
+                "power_watts": power, "temperature_c": temp, "sm_clock_mhz": sm,
+                "clock_event_reasons": reasons})
 
     def stop(self):
         self.proc.terminate()
@@ -225,11 +229,11 @@ class Server:
                 raise RuntimeError(f"vLLM container exited before ready; see {self.logp}")
             time.sleep(0.05)
         t1 = self.em.emit("WORKER_READY", wk, step, {"container": self.name})
-        time.sleep(0.5)  # let the log follower flush
-        phases = self.log_phases()
-        return {"attempt": self.attempt, "startup_s": (t1 - t0) / 1e9, **caches, **phases}
+        # Log phases are read later (log_phases), so no harness wait lands inside a measured interval.
+        return {"attempt": self.attempt, "startup_s": (t1 - t0) / 1e9, **caches}
 
     def log_phases(self) -> dict:
+        time.sleep(0.5)  # let the log follower flush
         text = self.logp.read_text(errors="replace") if self.logp else ""
         res = {}
         for k, rx in LOG_PHASES.items():
@@ -348,6 +352,7 @@ def exp_coldstart(out: Path, reps: int):
     for rep in range(reps):
         for evict in (True, False):
             r = srv.start(evict=evict)
+            r |= srv.log_phases()
             srv.stop()
             r |= {"rep": rep, "weights": "nvme" if evict else "page_cache"}
             rows.append(r)

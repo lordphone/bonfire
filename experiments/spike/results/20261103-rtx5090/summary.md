@@ -1,6 +1,6 @@
 # Spike results: `20261103-rtx5090`
 
-2598 telemetry events in 48 files, all valid against `telemetry-event.schema.json` with gap-free sequences.
+2630 telemetry events in 48 files, all valid against `telemetry-event.schema.json` with gap-free sequences.
 
 GPU NVIDIA GeForce RTX 5090 (driver 580.178.04), host `lordphone-ubuntu`. Values are median (σ, n). Times in ms unless noted.
 
@@ -13,6 +13,7 @@ GPU NVIDIA GeForce RTX 5090 (driver 580.178.04), host `lordphone-ubuntu`. Values
 | page_cache | warm | 20.5 (σ 0.1, n=5) | 0.4 (σ 0.0, n=5) | 0.1 (σ 0.0, n=5) | 5.0 (σ 0.0, n=5) | 7.7 (σ 0.0, n=5) |
 
 Sub-phases are vLLM's self-reported log values (diagnostic); startup is `WORKER_START_REQUESTED` → `WORKER_READY`. The vLLM torch.compile cache was warm for every start.
+The driver JIT cache state was not recorded in this run; it is inferred (only the first start followed a new cache mount, and its CUDA graph capture took 70 s instead of 5 s). The empty-cache row is a single first-start observation (n=1), diagnostic only.
 
 ## Prefill (time to first token, max_tokens=1)
 
@@ -33,8 +34,23 @@ Sub-phases are vLLM's self-reported log values (diagnostic); startup is `WORKER_
 
 ## Recovery after `kill -9` mid-generation (step 6 of 10)
 
-| Fault domain | Detect | Teardown | Startup | Reconcile | Re-prefill + 1st token | Crash → next token | Prefix tokens |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Inference kill (cold restart) | 387.3 (σ 18.8, n=5) | 21.0 (σ 0.6, n=5) | 20418.7 (σ 46.8, n=5) | 19.3 (σ 7.5, n=5) | 595.6 (σ 7.7, n=5) | 21562.9 (σ 47.2, n=5) | 10112.0 (σ 0.0, n=5) |
-| Runner kill APC off | 7.0 (σ 0.3, n=5) | 0.6 (σ 0.1, n=5) | 32.8 (σ 0.7, n=5) | 1.2 (σ 0.1, n=5) | 584.1 (σ 1.5, n=5) | 625.4 (σ 1.4, n=5) | 10112.0 (σ 0.0, n=5) |
-| Runner kill APC on | 7.0 (σ 8.1, n=5) | 0.7 (σ 0.1, n=5) | 33.2 (σ 0.7, n=5) | 1.2 (σ 0.1, n=5) | 31.3 (σ 0.9, n=5) | 73.5 (σ 0.8, n=5) | 10112.0 (σ 0.0, n=5) |
+| Fault domain | Detect | Teardown | Startup | Reconcile | Re-prefill + 1st token | Fault → next token | Crash → next token | Prefix tokens |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Inference kill (cold restart) | 387.6 (σ 18.1, n=5) | 21.4 (σ 48.6, n=5) | 20613.0 (σ 44.7, n=5) | 1.4 (σ 0.2, n=5) | 613.0 (σ 35.1, n=5) | 21657.1 (σ 85.3, n=5) | 21268.2 (σ 72.6, n=5) | 10112.0 (σ 0.0, n=5) |
+| Runner kill APC off | 7.0 (σ 0.3, n=5) | 0.6 (σ 0.1, n=5) | 32.8 (σ 0.7, n=5) | 1.2 (σ 0.1, n=5) | 584.1 (σ 1.5, n=5) | 632.6 (σ 1.4, n=5) | 625.4 (σ 1.4, n=5) | 10112.0 (σ 0.0, n=5) |
+| Runner kill APC on | 7.0 (σ 8.1, n=5) | 0.7 (σ 0.1, n=5) | 33.2 (σ 0.7, n=5) | 1.2 (σ 0.1, n=5) | 31.3 (σ 0.9, n=5) | 80.6 (σ 8.7, n=5) | 73.5 (σ 0.8, n=5) | 10112.0 (σ 0.0, n=5) |
+
+Fault → next token (`FAULT_INJECTED` → `NEXT_TOKEN_EMITTED`) is the headline; the phases do not sum to it exactly, because short gaps between boundaries are unattributed. For the inference kill, reconcile is only the two fsynced boundary events: the runner survives, so there is no log to replay.
+
+## GPU (GPU_SAMPLE every 200 ms)
+
+| Experiment | Samples | Median SM clock at ≥90% util (MHz) | Min SM clock at ≥90% util (MHz) | Max temp (°C) | Throttle samples |
+| --- | --- | --- | --- | --- | --- |
+| decode | 567 | 2850 | 2602 | 81 | not logged |
+| kill-inference | 958 | 2865 | 2842 | 74 | 99 |
+| kill-runner-apc-off | 403 | 2835 | 2625 | 86 | not logged |
+| kill-runner-apc-on | 269 | 2842 | 2557 | 82 | not logged |
+| prefill-apc-off | 53 | 2745 | 2572 | 64 | not logged |
+| prefill-apc-on | 57 | 2715 | 2587 | 66 | not logged |
+
+Throttle samples count power-cap, slowdown, or thermal clock event reasons; older runs did not log the reasons.

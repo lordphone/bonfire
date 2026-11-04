@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 # Reference categorical palette, light mode, fixed slot order.
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"]
 INK, INK2, GRID = "#0b0b0b", "#52514e", "#e4e3df"
+OTHER = "#b5b4af"  # unattributed time between boundaries; neutral, not a series hue
 
 
 def events(*paths: Path) -> list[dict]:
@@ -154,8 +155,12 @@ def fig_recovery(groups: dict[str, list[dict]], path: Path):
             ax.bar(names, vals, bottom=bottoms, color=SERIES[i], label=label, width=0.55,
                    edgecolor="white", linewidth=1)
             bottoms = [b + v for b, v in zip(bottoms, vals)]
-        for x, b in enumerate(bottoms):
-            ax.text(x, b, f"{b:.1f} {unit}" if unit == "s" else f"{b:.0f} {unit}",
+        # Bars total the median fault → next token; the remainder is time between boundaries.
+        totals = [med([r["fault_to_next_token_ms"] for r in groups[n]]) / scale for n in names]
+        ax.bar(names, [max(t - b, 0) for t, b in zip(totals, bottoms)], bottom=bottoms, color=OTHER,
+               label="Other", width=0.55, edgecolor="white", linewidth=1)
+        for x, t in enumerate(totals):
+            ax.text(x, t, f"{t:.1f} {unit}" if unit == "s" else f"{t:.0f} {unit}",
                     ha="center", va="bottom", color=INK, fontsize=6.5)
         ax.margins(y=0.12)
         _style(ax, f"Fault → next token ({unit})")
@@ -192,6 +197,26 @@ def fig_prefill(rows: list[dict], path: Path):
 
 # --------------------------------------------------------------------------- report
 
+THERMAL_OR_POWER = 0x4 | 0x8 | 0x20 | 0x40 | 0x80  # SW power cap, HW slowdown, SW/HW thermal, power brake
+
+
+def gpu_section(out: Path) -> list[str]:
+    md = ["## GPU (GPU_SAMPLE every 200 ms)", "",
+          "| Experiment | Samples | Median SM clock at ≥90% util (MHz) | Min SM clock at ≥90% util (MHz) | Max temp (°C) | Throttle samples |",
+          "| --- | --- | --- | --- | --- | --- |"]
+    for p in sorted(out.glob("*/gpu.jsonl")):
+        d = [json.loads(line)["details"] for line in p.open()]
+        busy = [x["sm_clock_mhz"] for x in d if x["utilization_pct"] >= 90]
+        if "clock_event_reasons" in d[0]:
+            thr = str(sum(1 for x in d if x["clock_event_reasons"] & THERMAL_OR_POWER))
+        else:
+            thr = "not logged"
+        md.append(f"| {p.parent.name} | {len(d)} | {med(busy):.0f} | {min(busy, default=0):.0f} | "
+                  f"{max(x['temperature_c'] for x in d):.0f} | {thr} |")
+    return md + ["", "Throttle samples count power-cap, slowdown, or thermal clock event reasons; "
+                 "older runs did not log the reasons.", ""]
+
+
 
 def main(out: Path):
     n_events, n_files = validate(out)
@@ -203,6 +228,7 @@ def main(out: Path):
            "Values are median (σ, n). Times in ms unless noted.", ""]
 
     cs = json.loads((out / "coldstart" / "summary.json").read_text()) if (out / "coldstart").exists() else []
+    jit_inferred = any("driver_jit_cache" not in r for r in cs)
     for i, r in enumerate(cs):
         # Runs before the harness recorded it: the driver JIT cache mount was new at the start of
         # run 20261103-rtx5090, so only its first start ran with an empty driver cache.
@@ -219,7 +245,12 @@ def main(out: Path):
                         stats([r.get(k) for r in g]) for k in
                         ("startup_s", "weights_load_s", "torch_compile_s", "cuda_graph_s", "engine_init_s")) + " |")
         md += ["", "Sub-phases are vLLM's self-reported log values (diagnostic); startup is "
-               "`WORKER_START_REQUESTED` → `WORKER_READY`. The vLLM torch.compile cache was warm for every start.", ""]
+               "`WORKER_START_REQUESTED` → `WORKER_READY`. The vLLM torch.compile cache was warm for every start."]
+        if jit_inferred:
+            md += ["The driver JIT cache state was not recorded in this run; it is inferred (only the first "
+                   "start followed a new cache mount, and its CUDA graph capture took 70 s instead of 5 s). "
+                   "The empty-cache row is a single first-start observation (n=1), diagnostic only."]
+        md.append("")
 
     pre = []
     for apc in ("off", "on"):
@@ -261,16 +292,20 @@ def main(out: Path):
             groups[f"Runner kill\nAPC {apc}"] = recovery_runner(b)
     if groups:
         md += ["## Recovery after `kill -9` mid-generation (step 6 of 10)", "",
-               "| Fault domain | Detect | Teardown | Startup | Reconcile | Re-prefill + 1st token | Crash → next token | Prefix tokens |",
-               "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+               "| Fault domain | Detect | Teardown | Startup | Reconcile | Re-prefill + 1st token | Fault → next token | Crash → next token | Prefix tokens |",
+               "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
         for name, rows in groups.items():
             md.append(f"| {name.replace(chr(10), ' ')} | " + " | ".join(stats([r[k] for r in rows]) for k in (
                 "detect_ms", "teardown_ms", "startup_ms", "reconcile_ms", "prefill_ms",
-                "crash_to_next_token_ms", "prefix_tokens")) + " |")
-        md.append("")
+                "fault_to_next_token_ms", "crash_to_next_token_ms", "prefix_tokens")) + " |")
+        md += ["", "Fault → next token (`FAULT_INJECTED` → `NEXT_TOKEN_EMITTED`) is the headline; the phases "
+               "do not sum to it exactly, because short gaps between boundaries are unattributed. "
+               "For the inference kill, reconcile is only the two fsynced boundary events: the runner "
+               "survives, so there is no log to replay.", ""]
         fig_recovery(groups, out / "recovery.png")
         (out / "recovery.json").write_text(json.dumps(groups, indent=1))
 
+    md += gpu_section(out)
     (out / "summary.md").write_text("\n".join(md))
     print("\n".join(md))
 

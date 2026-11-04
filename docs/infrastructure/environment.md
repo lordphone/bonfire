@@ -15,7 +15,7 @@
 | NCCL | 2.30.7 |
 | Model | `Qwen/Qwen3-4B` at revision `1cfa9a7208912126459214e8b04321603b3df60c` |
 | Precision | BF16 |
-| Measured context limit | 32,768 tokens |
+| Served context limit (`max_model_len`) | 32,768 tokens; the spike measured contexts up to about 16.9K |
 
 ## Hardware
 
@@ -31,16 +31,16 @@ Every reported GPU number comes from one local workstation. The team switched fr
 
 The pinned container runs unmodified; record the GPU UUID, model, driver, and container digest in telemetry. The card is a consumer part that also drives the desktop display, so:
 
-- run measurements with nothing else using the GPU, and log the SM clock and temperature with every `GPU_SAMPLE`;
+- run measurements with nothing else using the GPU, and log the SM clock, temperature, and clock event (throttle) reasons with every `GPU_SAMPLE`;
 - `--gpu-memory-utilization 0.85` leaves room for the display;
-- a warm replica (Should) has to share this one GPU with the primary; its timings include that contention and are labelled as such.
+- warm replicas are out of the current single-GPU process-restart scope; if one is ever added as future work, it would share this one GPU with the primary and must be labelled as such.
 
 ### Required runtime settings for the pinned image
 
 Both were found in the Week 1 spike (`experiments/spike/report.md`). `experiments/spike/spike.py` (`Server.start`) is the reference launch command.
 
 - **torchcodec shim.** The image bundles `torchcodec` 0.17.0 built for CUDA 13, so `vllm serve` crashes at import time with an uncaught `OSError` on any host. Mount `experiments/spike/compat` read-only and set `PYTHONPATH` to it. The shim raises `ImportError`, so vLLM skips audio decoding, which this workload doesn't use.
-- **Persistent driver JIT cache.** The image has no native sm_120 kernels, so the CUDA driver JIT-compiles PTX at every start (about 65 s) unless `/root/.nv` is a persistent volume. Set `CUDA_CACHE_MAXSIZE=4294967296` too. Persist the vLLM torch.compile cache (`/root/.cache/vllm`) and the Triton cache (`/root/.triton`) as well. Every restart measurement records whether these caches were warm.
+- **Persistent driver JIT cache.** The image has no native sm_120 kernels, so the CUDA driver JIT-compiles PTX at every start (about 65 s) unless `/root/.nv` is a persistent volume. Set `CUDA_CACHE_MAXSIZE=4294967296` too. Persist the vLLM torch.compile cache (`/root/.cache/vllm`) and the Triton cache (`/root/.triton`) as well. The harness records on every `WORKER_START_REQUESTED` whether these caches were warm (for the first cold-start run, the driver cache state was inferred; see the report).
 
 ## Prefix caching
 
