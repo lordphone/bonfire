@@ -7,7 +7,9 @@ recovery after `kill -9` of the inference process or the runner. The report is
 ## Run
 
 Prerequisites: Docker with the NVIDIA Container Toolkit, the pinned image pulled by digest
-(`infra/environment.lock.json`), and the pinned Qwen3-4B snapshot in `~/models/Qwen3-4B`.
+(`infra/environment.lock.json`), the pinned Qwen3-4B snapshot in `~/models/Qwen3-4B`, and
+[uv](https://docs.astral.sh/uv/) for the download and for `analyze.py` (it installs the
+analyzer's pinned dependencies).
 
 ```bash
 uvx --from huggingface_hub hf download Qwen/Qwen3-4B --revision 1cfa9a7208912126459214e8b04321603b3df60c --local-dir ~/models/Qwen3-4B
