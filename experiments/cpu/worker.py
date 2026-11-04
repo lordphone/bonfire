@@ -99,7 +99,9 @@ def run(args):
                 body = {key: value for key, value in prepared.items() if key != "sequence"}
                 body.update(owner_epoch=args.epoch, record_id=f"{step['step_id']}:halt:{args.epoch}",
                             record_type="RECOVERY_ABSTAIN", payload={"outcome": "UNKNOWN", "reason": response.get("reason", "unknown")})
-                log.append(task, body["record_id"], len(records), args.epoch, body)
+                answer = log.append(task, body["record_id"], len(records), args.epoch, body)
+                if answer["status"] not in {"APPENDED", "ALREADY_APPENDED"}:
+                    raise RuntimeError(f"RECOVERY_ABSTAIN was not persisted: {answer}")
                 return 3
             raise RuntimeError(f"tool returned {response['status']}")
         if args.method == "outcomeserve":

@@ -31,7 +31,11 @@ def paired_comparison(records, *, metric="fault_to_verified_seconds", bootstrap_
         if set(pair) == {"restart", "outcomeserve"}:
             fields = ("backend", "steps", "actual_progress", "fault_domain", "boundary", "purpose", "no_fault",
                       "context_spec_id", "business_fixture_sha256", "hardware_id", "runtime_versions", "environment_lock_sha256", "apc")
-            mismatched = [field for field in fields if pair["restart"].get(field) != pair["outcomeserve"].get(field)]
+            missing = [field for field in fields if field not in pair["restart"] or field not in pair["outcomeserve"]]
+            if missing:
+                incomplete.append({"pair_key": key, "reason": "missing setting: " + ",".join(missing)})
+                continue
+            mismatched = [field for field in fields if pair["restart"][field] != pair["outcomeserve"][field]]
             if mismatched:
                 incomplete.append({"pair_key": key, "reason": "mismatched setting: " + ",".join(mismatched)})
                 continue

@@ -8,12 +8,14 @@ import sqlite3
 import subprocess
 import sys
 import socket
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from analysis.pipeline import paired_comparison, break_even_curve, whole_task_break_even
 from experiments.cpu.harness import run, resolve_progress
+from experiments.cpu.worker import run as run_worker
 from outcomeserve.context import scripted_context
 from outcomeserve.contracts import request_fingerprint, validate_schema
 from outcomeserve.log import DurableLog
@@ -124,6 +126,65 @@ def test_pair_setting_mismatch_prevents_a_performance_estimate():
     rows[0]["context_spec_id"] = "different-model-context"
     result = paired_comparison(rows)
     assert result["estimate"] is None and "mismatched setting" in result["incomplete_pairs"][0]["reason"]
+
+
+@pytest.mark.parametrize("field", [
+    "backend", "steps", "actual_progress", "fault_domain", "boundary", "purpose", "no_fault",
+    "context_spec_id", "business_fixture_sha256", "hardware_id", "runtime_versions", "environment_lock_sha256", "apc",
+])
+@pytest.mark.parametrize("missing_methods", [("restart",), ("outcomeserve",), ("restart", "outcomeserve")])
+def test_missing_pair_identity_prevents_a_performance_estimate(field, missing_methods):
+    rows = [record(1, "restart", 2), record(1, "outcomeserve", 1)]
+    for row in rows:
+        if row["method"] in missing_methods:
+            del row[field]
+    result = paired_comparison(rows)
+    assert result["estimate"] is None
+    assert result["complete_pairs"] == 0
+    assert field in result["incomplete_pairs"][0]["reason"]
+
+
+@pytest.mark.parametrize("append_status", [
+    "APPENDED", "ALREADY_APPENDED", "STALE_EPOCH", "SEQUENCE_CONFLICT", "INVALID_TRANSITION", "RECORD_ID_CONFLICT",
+])
+def test_worker_requires_durable_abstention_before_unknown_exit(tmp_path, monkeypatch, append_status):
+    workload = make_inventory_workload("unknown-outcome")
+    workload_path = tmp_path / "workload.json"
+    workload_path.write_text(json.dumps(workload), encoding="utf-8")
+    store = StateStore(tmp_path / "worker.sqlite")
+    store.create_task(workload["task_id"], workload["initial_inventory"])
+    original_append = DurableLog.append
+
+    def injected_append(log, *args):
+        if args[-1]["record_type"] != "RECOVERY_ABSTAIN":
+            return original_append(log, *args)
+        if append_status == "ALREADY_APPENDED":
+            assert original_append(log, *args)["status"] == "APPENDED"
+        elif append_status != "APPENDED":
+            return {"status": append_status}
+        result = original_append(log, *args)
+        assert result["status"] == append_status
+        return result
+
+    monkeypatch.setattr(DurableLog, "append", injected_append)
+    monkeypatch.setattr("experiments.cpu.worker.ToolClient.submit",
+                        lambda *args, **kwargs: {"status": "UNKNOWN", "reason": "unqueryable"})
+    args = SimpleNamespace(workload=workload_path, db=store.path, tool_endpoint="http://unused",
+                           events=tmp_path / "events.jsonl", checkpoint=tmp_path / "checkpoint.json",
+                           method="outcomeserve", epoch=1, inject=False, fault_step=1, boundary="PRE_DISPATCH",
+                           clock_id="test-clock")
+    durable = append_status in {"APPENDED", "ALREADY_APPENDED"}
+    if durable:
+        assert run_worker(args) == 3
+    else:
+        with pytest.raises(RuntimeError, match=append_status):
+            run_worker(args)
+    records = DurableLog(store).read(workload["task_id"])
+    assert [r["record_type"] for r in records] == ["STEP_PREPARED"] + (["RECOVERY_ABSTAIN"] if durable else [])
+    with store.transaction() as connection:
+        assert bool(store.task(connection, workload["task_id"])["halted"]) is durable
+    events = [json.loads(line) for line in args.events.read_text().splitlines()]
+    assert not any(event["event_type"] == "STEP_COMPLETED" for event in events)
 
 
 @pytest.mark.parametrize("domain", [None, "inference"])
@@ -307,6 +368,11 @@ def test_existing_endpoint_cannot_masquerade_as_a_cold_restart():
 
 def record(seed, method, value, *, no_fault=False, passed=True):
     return {"pair_key": f"s{seed}:setting:{no_fault}", "method": method, "valid": True, "passed": passed,
+            "backend": "scripted_cpu", "steps": 5, "actual_progress": 0.4,
+            "fault_domain": "runner", "boundary": "PRE_DISPATCH", "purpose": "performance",
+            "context_spec_id": "test-context", "business_fixture_sha256": "test-fixture",
+            "hardware_id": "test-host", "runtime_versions": {"python": "3.12"},
+            "environment_lock_sha256": "test-environment", "apc": False,
             "no_fault": no_fault, "task_to_verified_seconds": value, "fault_to_verified_seconds": value / 2}
 
 
