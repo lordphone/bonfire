@@ -64,10 +64,12 @@ Unsupported hardware or a failed check ends the run as `PREFLIGHT_FAILED`; it mu
 CPU runs validate protocol state transitions, schemas, deterministic fault schedules, reconciliation, and `RECOVERY_ABSTAIN`. They do not produce GPU latency or throughput claims and must use a distinct `configuration_id`. Run the local contract suite with:
 
 ```bash
-python -m pip install -e '.[dev]'
 python -m pytest -q
-python scripts/validate_week1_contracts.py
+python scripts/validate_recovery_contracts.py
+python scripts/validate_infrastructure_contracts.py
 ```
+
+See the [README](../../README.md) for the full CPU experiment workflow.
 
 ## Provenance
 
