@@ -1,0 +1,173 @@
+{
+ "Inference kill\n(cold restart)": [
+  {
+   "task": "agent-00",
+   "detect_ms": 387.602055,
+   "teardown_ms": 22.030007,
+   "startup_ms": 20650.268547,
+   "reconcile_ms": 1.406275,
+   "prefill_ms": 599.74502,
+   "crash_to_next_token_ms": 21294.508694,
+   "fault_to_next_token_ms": 21682.110749,
+   "prefix_tokens": 10112
+  },
+  {
+   "task": "agent-01",
+   "detect_ms": 393.629157,
+   "teardown_ms": 129.675619,
+   "startup_ms": 20611.602614,
+   "reconcile_ms": 1.356326,
+   "prefill_ms": 645.468389,
+   "crash_to_next_token_ms": 21395.512192,
+   "fault_to_next_token_ms": 21789.141349,
+   "prefix_tokens": 10112
+  },
+  {
+   "task": "agent-02",
+   "detect_ms": 381.977382,
+   "teardown_ms": 20.784534,
+   "startup_ms": 20529.3539,
+   "reconcile_ms": 1.739023,
+   "prefill_ms": 644.635978,
+   "crash_to_next_token_ms": 21218.037324,
+   "fault_to_next_token_ms": 21600.014706,
+   "prefix_tokens": 10112
+  },
+  {
+   "task": "agent-03",
+   "detect_ms": 348.609801,
+   "teardown_ms": 21.353858,
+   "startup_ms": 20615.356624,
+   "reconcile_ms": 1.295215,
+   "prefill_ms": 561.104061,
+   "crash_to_next_token_ms": 21220.233434,
+   "fault_to_next_token_ms": 21568.843235,
+   "prefix_tokens": 10112
+  },
+  {
+   "task": "agent-04",
+   "detect_ms": 388.923387,
+   "teardown_ms": 19.75823,
+   "startup_ms": 20613.016542,
+   "reconcile_ms": 1.360625,
+   "prefill_ms": 612.988014,
+   "crash_to_next_token_ms": 21268.196453,
+   "fault_to_next_token_ms": 21657.11984,
+   "prefix_tokens": 10112
+  }
+ ],
+ "Runner kill\nAPC off": [
+  {
+   "task": "agent-00",
+   "detect_ms": 6.692602,
+   "teardown_ms": 0.760531,
+   "startup_ms": 32.831068,
+   "reconcile_ms": 1.185722,
+   "prefill_ms": 582.469999,
+   "crash_to_next_token_ms": 623.325861,
+   "fault_to_next_token_ms": 630.018463,
+   "prefix_tokens": 10112
+  },
+  {
+   "task": "agent-01",
+   "detect_ms": 7.021042,
+   "teardown_ms": 0.635632,
+   "startup_ms": 33.968429,
+   "reconcile_ms": 1.157572,
+   "prefill_ms": 584.138431,
+   "crash_to_next_token_ms": 625.866864,
+   "fault_to_next_token_ms": 632.887906,
+   "prefix_tokens": 10112
+  },
+  {
+   "task": "agent-02",
+   "detect_ms": 6.650272,
+   "teardown_ms": 0.646981,
+   "startup_ms": 32.290236,
+   "reconcile_ms": 1.307012,
+   "prefill_ms": 586.685122,
+   "crash_to_next_token_ms": 626.753711,
+   "fault_to_next_token_ms": 633.403983,
+   "prefix_tokens": 10112
+  },
+  {
+   "task": "agent-03",
+   "detect_ms": 7.108202,
+   "teardown_ms": 0.615341,
+   "startup_ms": 32.251515,
+   "reconcile_ms": 1.132882,
+   "prefill_ms": 584.063017,
+   "crash_to_next_token_ms": 623.935866,
+   "fault_to_next_token_ms": 631.044068,
+   "prefix_tokens": 10112
+  },
+  {
+   "task": "agent-04",
+   "detect_ms": 7.219862,
+   "teardown_ms": 0.634141,
+   "startup_ms": 33.100136,
+   "reconcile_ms": 1.074832,
+   "prefill_ms": 584.725537,
+   "crash_to_next_token_ms": 625.409216,
+   "fault_to_next_token_ms": 632.629078,
+   "prefix_tokens": 10112
+  }
+ ],
+ "Runner kill\nAPC on": [
+  {
+   "task": "agent-00",
+   "detect_ms": 6.944781,
+   "teardown_ms": 0.945302,
+   "startup_ms": 32.475133,
+   "reconcile_ms": 1.227762,
+   "prefill_ms": 30.978791,
+   "crash_to_next_token_ms": 72.086829,
+   "fault_to_next_token_ms": 79.03161,
+   "prefix_tokens": 10112
+  },
+  {
+   "task": "agent-01",
+   "detect_ms": 4.531917,
+   "teardown_ms": 0.697841,
+   "startup_ms": 33.228935,
+   "reconcile_ms": 1.189451,
+   "prefill_ms": 31.020471,
+   "crash_to_next_token_ms": 72.064808,
+   "fault_to_next_token_ms": 76.596725,
+   "prefix_tokens": 10112
+  },
+  {
+   "task": "agent-02",
+   "detect_ms": 20.450443,
+   "teardown_ms": 0.720021,
+   "startup_ms": 33.244004,
+   "reconcile_ms": 1.148982,
+   "prefill_ms": 32.461393,
+   "crash_to_next_token_ms": 73.59767,
+   "fault_to_next_token_ms": 94.048113,
+   "prefix_tokens": 10112
+  },
+  {
+   "task": "agent-03",
+   "detect_ms": 6.983541,
+   "teardown_ms": 0.725441,
+   "startup_ms": 34.433716,
+   "reconcile_ms": 1.335203,
+   "prefill_ms": 31.314801,
+   "crash_to_next_token_ms": 73.618739,
+   "fault_to_next_token_ms": 80.60228,
+   "prefix_tokens": 10112
+  },
+  {
+   "task": "agent-04",
+   "detect_ms": 21.258064,
+   "teardown_ms": 0.678431,
+   "startup_ms": 32.887572,
+   "reconcile_ms": 1.309242,
+   "prefill_ms": 32.920103,
+   "crash_to_next_token_ms": 73.542618,
+   "fault_to_next_token_ms": 94.800682,
+   "prefix_tokens": 10112
+  }
+ ]
+}
