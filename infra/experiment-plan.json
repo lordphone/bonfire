@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.1.0",
+  "primary_fault_domain": "inference",
+  "primary_recovery": "single_gpu_process_restart",
+  "gpu_steps": 20,
+  "prefix_targets": [
+    2048,
+    8192,
+    16384
+  ],
+  "completed_progress": [
+    0.1,
+    0.5,
+    0.9
+  ],
+  "performance_methods": [
+    "restart",
+    "outcomeserve"
+  ],
+  "correctness_methods": [
+    "restart",
+    "naive_retry",
+    "transcript_checkpoint",
+    "outcomeserve"
+  ],
+  "repeats_per_performance_cell": 20,
+  "main_gpu_run_count": 360,
+  "optional": [
+    "runner_only_diagnostic",
+    "logging_overhead"
+  ],
+  "deferred": [
+    "warm_replica",
+    "kv_restore",
+    "decode_checkpoint_tuning",
+    "concurrent_scheduler"
+  ],
+  "gpu_results_require": [
+    "real_generation",
+    "exact_generated_token_ids",
+    "resolved_template_hash",
+    "verified_complete",
+    "resource_samples"
+  ],
+  "budget_gpu_hours": [
+    90,
+    120
+  ]
+}

@@ -1,0 +1,444 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://outcomeserve.local/schemas/tool-service.schema.json",
+  "title": "OutcomeServe C2 ToolServiceMessage",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "task_id",
+        "step_id",
+        "op_id",
+        "request_fingerprint",
+        "owner_epoch",
+        "tool_name",
+        "args"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "kind": {
+          "const": "submit"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "owner_epoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tool_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/argumentValue"
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "task_id",
+        "step_id",
+        "op_id",
+        "request_fingerprint",
+        "owner_epoch"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "kind": {
+          "const": "query"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "owner_epoch": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "task_id",
+        "step_id",
+        "op_id",
+        "request_fingerprint",
+        "owner_epoch",
+        "status",
+        "result",
+        "commit_receipt"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "kind": {
+          "const": "response"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "owner_epoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "const": "COMMITTED"
+        },
+        "result": {
+          "type": "object"
+        },
+        "commit_receipt": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "task_id",
+        "step_id",
+        "op_id",
+        "request_fingerprint",
+        "owner_epoch",
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "kind": {
+          "const": "response"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "owner_epoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "const": "NOT_COMMITTED"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "task_id",
+        "step_id",
+        "op_id",
+        "request_fingerprint",
+        "owner_epoch",
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "kind": {
+          "const": "response"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "owner_epoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "const": "UNKNOWN"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "task_id",
+        "step_id",
+        "op_id",
+        "request_fingerprint",
+        "owner_epoch",
+        "status",
+        "current_epoch"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "kind": {
+          "const": "response"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "owner_epoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "const": "STALE_EPOCH"
+        },
+        "current_epoch": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "task_id",
+        "step_id",
+        "op_id",
+        "request_fingerprint",
+        "owner_epoch",
+        "status",
+        "stored_fingerprint"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "kind": {
+          "const": "response"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "step_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "op_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "request_fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "owner_epoch": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "const": "FINGERPRINT_MISMATCH"
+        },
+        "stored_fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "tool_name",
+        "idempotent_business_operation",
+        "supports_deduplication",
+        "supports_outcome_query",
+        "query_consistency",
+        "deduplication_window_seconds",
+        "atomic_effect_and_result"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "kind": {
+          "const": "capabilities"
+        },
+        "tool_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "idempotent_business_operation": {
+          "type": "boolean"
+        },
+        "supports_deduplication": {
+          "type": "boolean"
+        },
+        "supports_outcome_query": {
+          "type": "boolean"
+        },
+        "query_consistency": {
+          "enum": [
+            "linearizable",
+            "eventual",
+            "unsupported"
+          ]
+        },
+        "deduplication_window_seconds": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 1
+            }
+          ]
+        },
+        "atomic_effect_and_result": {
+          "type": "boolean"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "argumentValue": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/argumentValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/argumentValue"
+          }
+        }
+      ]
+    }
+  }
+}

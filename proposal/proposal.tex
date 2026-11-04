@@ -1,0 +1,126 @@
+\documentclass{article}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+\usepackage[accepted]{mlsys2024}
+\makeatletter
+\renewcommand{\Notice@String}{11-868 Large Language Model Systems Project Proposal.}
+\makeatother
+\mlsystitlerunning{OutcomeServe: Crash-Consistent Agent Recovery}
+\begin{document}
+\twocolumn[
+\mlsystitle{OutcomeServe: Crash-Consistent Recovery for Long-Horizon Agentic LLM Serving}
+\begin{mlsysauthorlist}
+\mlsysauthor{Shirley Li}{course}
+\mlsysauthor{Lordphone Wen}{course}
+\mlsysauthor{Victoria Zhu}{course}
+\end{mlsysauthorlist}
+\mlsysaffiliation{course}{Team 33: Bonfire}
+\mlsyscorrespondingauthor{Shirley Li}{shirley3@andrew.cmu.edu}
+\mlsyscorrespondingauthor{Lordphone Wen}{lordphow@andrew.cmu.edu}
+\mlsyscorrespondingauthor{Victoria Zhu}{qiyuez@andrew.cmu.edu}
+\mlsyskeywords{LLM serving, agents, fault tolerance, crash consistency}
+\vskip 0.3in
+]
+\printAffiliationsAndNotice{}
+
+\section{Problem and Motivation}
+% P01: cloud workload motivation and concrete failure window.
+Cloud-hosted LLM agents alternate between generation and tool execution. A crash late in a task can waste completed decoding and tool work. It can also separate the recorded conversation from external state: an order may commit just before its result is logged. Naive retry can duplicate the order, while restarting repeats earlier computation and potentially its side effects. The value of recovery therefore depends on both correctness and the resources saved relative to its overhead.
+
+% P02: measurable question without promising a crossover or a new scheduler.
+\textbf{Research question.} When does crash-consistent resume preserve tool outcomes and reduce task completion time and resource consumption? OutcomeServe combines durable tool-outcome reconciliation with vLLM prefix replay. We study uncertain tool completion, reconstruction of lost inference state, and the tradeoff between logging overhead and avoided recomputation. We will measure this tradeoff rather than assume that resume always wins.
+
+\section{Related Work and Available Artifacts}
+% P03: retain the relevant recovery systems and public artifacts.
+\textbf{AgentRewind} restores agent context and controlled workspace state after unsuccessful trajectories \cite{agentrewind}; \textbf{Crab} selects sandbox filesystem/process checkpoint granularity \cite{crab}. Both have public code. \textbf{Belayer} recovers agentic-RL workers and environments, including rebuilding KV contents from logged prefixes \cite{belayer}; its paper describes a Slime implementation, without an identified standalone release in the previously checked version. Open-source \textbf{D\'ej\`aVu} streams and replicates KV caches for inference recovery \cite{dejavu}. These systems address related recovery layers; our focus is online task recovery across committed tool outcomes and model context.
+
+% P04: practical checkpoint baseline and scoped contribution.
+Open-source \textbf{LangGraph} already supports checkpointed execution \cite{langgraph}. Our contribution is a scoped prototype and measurement study of tool reconciliation and LLM re-prefill. A transcript-checkpoint baseline will test what logging alone preserves. We will use open-source \textbf{vLLM} and Apache-2.0 \textbf{Qwen3-4B} weights \cite{vllm,qwen3}; reference entries link to available artifacts.
+
+\section{Proposed Approach and Scope}
+% P05: separate runner failure, inference-state loss, and tool timeouts.
+\textbf{Deployment and failures.} The runner logs to durable disk; vLLM holds disposable KV state on a GPU; a separate transactional tool service retains committed outcomes. We test two failure cases: a runner crash near a tool commit, and an inference-process crash requiring a fresh worker with no request KV state. Tool timeouts alone do not imply KV loss. The log and tool service survive, tools run sequentially, and one runner owns each task. The primary deployment uses one GPU with process restarts.
+
+% P06: explicit tool-side contract.
+\textbf{Tool contract.} For supported writes, a database transaction atomically commits the operation ID, business effect, and result. Duplicate submissions return the saved result. Arbitrary APIs without this contract cannot receive the same guarantee; ambiguous outcomes are surfaced. Heartbeats can detect a stopped worker but cannot establish whether its last tool operation committed.
+
+% P07a-P07c: preserve core protocol and clarify re-prefill conditions.
+\textbf{Protocol.} The runner, durable log, tool service, vLLM, and fault injector implement three steps:
+\begin{enumerate}
+% P07a: preserve the durable intent before dispatch.
+\item \textbf{Prepare:} persist the generated tool call, arguments, and stable task/step operation ID before dispatch; discard incomplete uncommitted generation after failure.
+% P07b: resolve the commit-before-acknowledgment window.
+\item \textbf{Reconcile:} submit the same ID after a lost acknowledgment; the tool returns the existing outcome or commits once. A local \texttt{PREPARED} record does not prove non-execution.
+% P07c: re-prefill is conditional on unavailable reusable KV state.
+\item \textbf{Commit context:} atomically record the result and advance the committed transcript boundary. Replay saved token IDs to reconstruct context; re-prefill rebuilds KV state when the replacement worker has no reusable cache. Runner-only recovery is measured separately.
+\end{enumerate}
+
+% P08: invariant and bounded scope; remove snapshot-tuning commitment.
+Each completed step must occur once in the committed transcript and match one tool outcome; pending outcomes are reconciled before generation continues. The log records token IDs and model/template versions. Future generation need not be identical. GPU-cache replication, storage failure, sandbox rollback, concurrent subagents, and scheduler design are outside this three-person project's scope.
+
+\section{Evaluation Plan}
+% P09: controlled workload and bounded GPU experiment matrix.
+\textbf{Workload and faults.} Order tasks mix reads, idempotent writes, and inventory decrements. CPU tests use scripted traces, 5/10/20-step tasks, and final-state verifiers. They inject runner crashes before dispatch, after tool commit but before result logging, after result logging, and during recovery. Real Qwen3-4B runs add inference-process crashes during generation. The main GPU study fixes 20 steps and varies prefix length (2K/8K/16K) and approximate completed fraction (10/50/90\%), avoiding a full Cartesian product of all factors.
+
+% P10: separate correctness from resettable performance comparison.
+\textbf{Baselines.} Correctness tests compare naive retry, full restart, transcript-only checkpointing, and OutcomeServe while tool state persists. Transcript-only recovery saves completed history but lacks pending-outcome reconciliation. For performance comparisons requiring equivalent task semantics, use an isolated resettable database and include reset time. Use identical model settings and worker-start policies. This does not assume that real external effects are reversible.
+
+% P11: inexpensive resource measurements with precise GPU terminology.
+\textbf{Metrics.} Report duplicates, transcript/tool-state mismatches, and task success, separating model errors from recovery violations. Measure crash-to-next-token and crash-to-correct-completion latency, regenerated outputs, re-prefilled inputs, and startup/reconciliation/prefill time. Add cumulative process CPU time, peak host RAM, peak GPU memory, and sampled GPU utilization. Report GPU allocation-seconds per completed task; this is a reservation-cost measure, not active GPU cycles. Failure-free logging overhead has a provisional target below 5\%; no savings are assumed in advance.
+
+% P12: compare equivalent endpoints and allow no observed crossover.
+\textbf{Resume/restart tradeoff.} For the same task, fault position, and resettable environment, plot
+\[
+\Delta T(L,f)=T_{\rm restart}-T_{\rm resume},
+\]
+where both times start at failure and end at verified completion. Positive values favor resume. Report reset cost explicitly and next-token latency separately. This tests whether a crossover occurs within our measured range without requiring one. Paired seeds and 20 repetitions per selected condition support confidence intervals; p95 estimates are descriptive at this sample size.
+
+% P13: low-cost sensitivity analysis, explicitly assumed failure probability.
+\begin{samepage}
+\textbf{Frequency and scope control.} Reuse measured failure-free overhead and single-failure savings for an illustrative break-even analysis over assumed failure probabilities; do not infer deployment crash rates from task success. Prioritize 360 main runs (nine prefix/progress settings, two methods, 20 repeats), plus logging-overhead and runner-only diagnostics. Run the broader correctness matrix on CPU. Full workflow-framework integration and hardware cycle profiling are deferred.
+\par
+\end{samepage}
+
+\section{Team and Milestones}
+% P14: keep ownership; monitoring and analysis extend existing roles.
+Shirley Li owns the runtime, tool contract, vLLM integration, and recovery. Lordphone Wen owns process lifecycle, fault injection, resource monitoring, and benchmarks. Victoria Zhu owns durable logging, prefix reconstruction, verifiers, and statistical analysis. All share integration and writing. Added resource metrics reuse the benchmark harness.
+
+% P15: preserve eight-week milestones without inventing new calendar dates.
+\subsection{Eight-week plan}
+\begin{table}[ht]
+\caption{Planned eight-week schedule.}
+\label{tab:timeline}
+\vskip 0.10in
+\centering
+\small
+\begin{tabular}{cl}
+\toprule
+Week & Milestone \\
+\midrule
+1 & Finalize failure model and interfaces \\
+2 & Agent workload, tools, and verifier \\
+3 & vLLM integration and fault injection \\
+4 & Durable log, CPU tests, and timing pilot \\
+5 & Recovery and baseline implementations \\
+6 & Correctness and failure-boundary tests \\
+7 & GPU experiments and resource analysis \\
+8 & Analysis, demo, report, and presentation \\
+\bottomrule
+\end{tabular}
+\vskip -0.05in
+\end{table}
+The minimum result is validated tool reconciliation plus a measured restart resource tradeoff; actual dates follow course deadlines.
+
+
+\section{Infrastructure and Compute Budget}
+% P16: one GPU is sufficient; keep the original resource cap.
+We request one L40S 48~GB or A100 40~GB GPU, 16--32 CPU cores, 64~GB RAM, and 200~GB NVMe. Qwen3-4B needs roughly 8~GB for BF16 weights before KV/runtime overhead; a 24~GB fallback requires pilot calibration. Retain the 90--120 GPU-hour cap: integration 20--30, pilot 10--20, evaluation 40--50, repeats/contingency 20. The pilot determines feasible run counts; preserve paired repeats while reducing optional settings if necessary. A second GPU is optional and any reserved standby time counts toward the same budget.
+
+\clearpage
+\bibliography{references}
+\bibliographystyle{mlsys2024}
+\end{document}

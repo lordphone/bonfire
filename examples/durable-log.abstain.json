@@ -1,0 +1,45 @@
+[
+  {
+    "schema_version": "1.1.0",
+    "task_id": "example-run-001:order-042",
+    "step_id": "step-01",
+    "op_id": "example-run-001:order-042:step-01",
+    "owner_epoch": 1,
+    "model_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+    "record_id": "log-0001",
+    "sequence": 1,
+    "record_type": "STEP_PREPARED",
+    "payload": {
+      "tool_name": "decrement_inventory",
+      "args": {
+        "quantity": 1,
+        "sku": "item-01"
+      },
+      "request_fingerprint": "sha256:fbc667e9228baf1c39f88c6a72f2717d1ff065e4954904186d77ee76464195b8",
+      "generated_token_ids": [
+        103
+      ],
+      "generation_prompt_token_ids": [
+        101,
+        102
+      ]
+    },
+    "context_spec_id": "context-46d4bbe96c4156054a29749677483016064fa4d5f43f82da6bc57e3aa59d452f"
+  },
+  {
+    "schema_version": "1.1.0",
+    "task_id": "example-run-001:order-042",
+    "step_id": "step-01",
+    "op_id": "example-run-001:order-042:step-01",
+    "owner_epoch": 1,
+    "model_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+    "record_id": "log-0002",
+    "sequence": 2,
+    "record_type": "RECOVERY_ABSTAIN",
+    "payload": {
+      "outcome": "UNKNOWN",
+      "reason": "external outcome cannot be queried"
+    },
+    "context_spec_id": "context-46d4bbe96c4156054a29749677483016064fa4d5f43f82da6bc57e3aa59d452f"
+  }
+]
