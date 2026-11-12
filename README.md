@@ -15,7 +15,20 @@
 
 ## Environment and tests
 
-CPU execution requires Python 3.12 and the dependencies in pyproject.toml. Run these commands in Windows CMD from the project root, using the existing .venv:
+CPU execution requires Python 3.12 or newer. On macOS or Linux, set up and test from the project root:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+python -m pytest -q
+python scripts/validate_recovery_contracts.py
+python scripts/validate_infrastructure_contracts.py
+```
+
+Process-tree and resource sampling read `/proc` on Linux and use the Win32 API on Windows. macOS is not supported yet, so the tests that start and kill real worker processes fail there.
+
+In Windows CMD, using the existing .venv:
 
 ```cmd
 cd /d D:\A\bonfire
