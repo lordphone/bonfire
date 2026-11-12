@@ -285,20 +285,14 @@ Expected benefit(q) = q*S - (1-q)*H
 
 PR #7 merged on 2026-11-04 as commit `f79b7d7`. Its implemented scope includes the durable log/tool transaction prototype, independent business/protocol verifiers, scripted CPU fault comparisons, baselines and paired analysis. The merged result is the current RQ1 correctness foundation; remaining work expands the correctness matrix and connects the same transactional reconciliation path to real vLLM recovery.
 
-### PR #8 — Lordphone: open RTX 5090 spike and midterm RQ2 evidence
+### PR #8 — Lordphone: merged RTX 5090 spike and midterm RQ2 evidence
 
-PR #8 is based on merged PR #7 at current head `e3d4490`. The independently reviewed spike evidence includes 2,630 schema-valid telemetry events in 48 files, retained raw data, figures and a midterm RQ2 section. Regular measurement cells use five repetitions; the 86-second empty-driver-JIT result is a single diagnostic observation. The earlier measurement and future-work wording blockers are resolved; the PR remains open under `CHANGES_REQUESTED` pending work-distribution coordination and final re-review.
-
-Before merge, PR #8 must:
-
-1. drop its small edit to the superseded work-distribution text and retain this proposal-aligned file after this PR lands；
-2. preserve its RTX 5090 environment evidence and PR #7's protocol/schema state；
-3. pass final review on the current rebased branch before becoming final project evidence。
+PR #8 merged on 2026-11-12 as merge commit `870615a`, from reviewed head `e3d4490` on top of PR #7. Its evidence includes 2,630 schema-valid telemetry events in 48 files, retained raw data, figures and a midterm RQ2 section. Regular measurement cells use five repetitions; the 86-second empty-driver-JIT result is a single diagnostic observation. The final review recomputed the fault-to-next-token medians from raw events (inference kill 21.7 s, runner kill 633 ms with APC off and 81 ms with APC on). The RTX 5090 environment evidence is in `docs/infrastructure/environment.md` and the spike report in `experiments/spike/report.md`; warm-replica failover and decode checkpointing are not implemented or measured.
 
 ### Integration order
 
-1. Merge this proposal-aligned work-distribution document as a small docs-only PR.
-2. Update PR #8 onto the resulting `main`, retain this work-distribution file while preserving its RTX 5090 environment evidence, then re-review and merge.
+1. ~~Merge PR #7~~ (done 2026-11-04) and ~~PR #8~~ (done 2026-11-12).
+2. Merge this proposal-aligned work-distribution document as a small docs-only PR.
 3. Connect PR #7's transactional reconciliation and shared verifier to PR #8's real inference restart path.
 4. Integrate the midterm sections and figures, compile the complete artifact and audit every claim against retained evidence.
 
