@@ -1,11 +1,23 @@
 """Strict token-ID completion client for an explicitly configured serving API."""
 
+import http.client
 import json
 from urllib.request import Request, urlopen
 
 
 class InferenceError(RuntimeError):
     pass
+
+
+class InferenceUnavailable(InferenceError):
+    """The inference process went away: connection failure or a stream cut before finish_reason.
+
+    Unlike other InferenceErrors this is not a model or protocol failure; the
+    caller may wait for a replacement worker and replay the committed prefix.
+    """
+
+
+TRANSPORT_ERRORS = (OSError, http.client.HTTPException)
 
 
 class CompletionBackend:
@@ -26,8 +38,11 @@ class CompletionBackend:
     def tokenize(self, text):
         request = Request(self.endpoint + "/tokenize", data=json.dumps({"model": self.model, "prompt": text}).encode(),
                           headers={"Content-Type": "application/json"})
-        with urlopen(request, timeout=self.timeout) as response:
-            tokens = json.load(response)["tokens"]
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                tokens = json.load(response)["tokens"]
+        except TRANSPORT_ERRORS as exc:
+            raise InferenceUnavailable(f"tokenize failed: {exc}") from exc
         if not isinstance(tokens, list) or not tokens or any(type(t) is not int or t < 0 for t in tokens):
             raise InferenceError("tokenize endpoint did not return token IDs")
         return tokens
@@ -60,23 +75,33 @@ class CompletionBackend:
                    "temperature": 0, "seed": seed, "return_token_ids": True, "stream": True}
         request = Request(self.endpoint + "/v1/completions", data=json.dumps(payload).encode(),
                           headers={"Content-Type": "application/json"})
-        tokens, text, observed = [], [], False
-        with urlopen(request, timeout=self.timeout) as response:
-            for line in response:
-                if not line.startswith(b"data:") or line.strip() == b"data: [DONE]":
-                    continue
-                choices = json.loads(line[5:]).get("choices", [])
-                if not choices:
-                    continue
-                choice = choices[0]
-                chunk = choice.get("token_ids", [])
-                if not isinstance(chunk, list) or any(type(t) is not int or t < 0 for t in chunk):
-                    raise InferenceError("stream requires exact per-chunk generated token IDs")
-                if chunk and not observed:
-                    on_first_token(chunk)
-                    observed = True
-                tokens.extend(chunk)
-                text.append(choice.get("text", ""))
+        tokens, text, observed, finished = [], [], False, False
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                for line in response:
+                    if not line.endswith(b"\n"):
+                        break  # cut mid-event: the server died while writing
+                    if not line.startswith(b"data:") or line.strip() == b"data: [DONE]":
+                        continue
+                    choices = json.loads(line[5:]).get("choices", [])
+                    if not choices:
+                        continue
+                    choice = choices[0]
+                    chunk = choice.get("token_ids", [])
+                    if not isinstance(chunk, list) or any(type(t) is not int or t < 0 for t in chunk):
+                        raise InferenceError("stream requires exact per-chunk generated token IDs")
+                    if chunk and not observed:
+                        on_first_token(chunk)
+                        observed = True
+                    tokens.extend(chunk)
+                    text.append(choice.get("text", ""))
+                    finished = finished or choice.get("finish_reason") is not None
+        except TRANSPORT_ERRORS as exc:
+            raise InferenceUnavailable(f"stream broke after {len(tokens)} tokens: {exc}") from exc
+        if not finished:
+            # A killed server can close the socket cleanly; without finish_reason
+            # the partial text is lost generation, not a malformed tool call.
+            raise InferenceUnavailable(f"stream ended without finish_reason after {len(tokens)} tokens")
         if not tokens:
             raise InferenceError("stream did not expose generated token IDs")
         try:
@@ -94,8 +119,11 @@ class CompletionBackend:
                    "temperature": 0, "seed": seed, "return_token_ids": True}
         request = Request(self.endpoint + "/v1/completions", data=json.dumps(payload).encode(),
                           headers={"Content-Type": "application/json"})
-        with urlopen(request, timeout=self.timeout) as response:
-            answer = json.load(response)
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                answer = json.load(response)
+        except TRANSPORT_ERRORS as exc:
+            raise InferenceUnavailable(f"completion failed: {exc}") from exc
         choice = answer["choices"][0]
         token_ids = choice.get("token_ids")
         if not isinstance(token_ids, list) or not token_ids or any(type(token) is not int or token < 0 for token in token_ids):
