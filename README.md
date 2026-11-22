@@ -76,6 +76,10 @@ Correctness compares four methods while retaining tool state. Performance compar
 
 ## GPU pilot
 
+For the integrated runner and C6 1.3.0 data-return contract, use the
+[RTX 5090 handoff guide](docs/gpu-handoff.md). The older pilot entry point below
+emits 1.1.0 diagnostics; it is not the executor for the formal matrix handoff.
+
 Run `scripts/run_gpu_pilot.py --config <config-file> --output-dir <new-directory>`. Start from infra/gpu-pilot.example.json, replace the local model snapshot path and GPU UUID, and use the Linux/GPU environment pinned by infra/environment.lock.json. The pilot requires an exclusive GPU, NVML, the actual template hash, explicit thinking/APC settings, and exact token-ID and streaming interfaces. Unsupported serving capabilities cause failure.
 
 The experiment plan is in infra/experiment-plan.json. Real GPU measurements have not been collected. CPU data and HTTP mock tests do not establish GPU performance.

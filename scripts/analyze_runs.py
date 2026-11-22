@@ -28,7 +28,7 @@ def main():
     for record in records:
         validate_schema("run-result", record)
     # Validate grouping before creating output files, including the H/S linkage.
-    gpu = [r for r in records if r.get("schema_version") == "1.2.0" and r.get("backend") == "vllm"]
+    gpu = [r for r in records if r.get("schema_version") == "1.3.0" and r.get("backend") == "vllm"]
     matrix = gpu_matrix_analysis(gpu) if gpu else None
     # Different settings are never pooled: pair_key without the seed identifies a cell.
     cells = {}

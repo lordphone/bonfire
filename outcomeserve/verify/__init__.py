@@ -110,19 +110,27 @@ def _snapshot(database, task_id):
         connection.close()
 
 
-def verify_workload(database, workload, *, checkpoint="completed"):
+def verify_workload(database, workload, *, checkpoint="completed", token_source="scripted"):
     """Check a consistent database snapshot against trusted scripted inputs.
 
     `in_progress` allows the expected prepared/committed-but-unlogged window.
     `completed` requires every step/context and no unreconciled tool operation.
     `halted` verifies a terminal halt, not that abstention was justified.
+
+    `token_source="scripted"` (CPU) requires each committed context to equal the
+    workload's token IDs. `"model"` (real inference) cannot know the tokens in
+    advance; it requires an append-only transcript instead: every prompt extends
+    the previous committed context, and every committed context extends exactly
+    the prompt and generation recorded at prepare time.
     """
     if checkpoint not in {"in_progress", "completed", "halted"}:
         raise ValueError("unsupported verification checkpoint")
+    if token_source not in {"scripted", "model"}:
+        raise ValueError("token_source must be scripted or model")
     validate_workload(workload)
     report = {
         "schema_version": "1.0.0", "task_id": workload["task_id"],
-        "checkpoint": checkpoint, "valid": True, "invalid_reasons": [],
+        "checkpoint": checkpoint, "token_source": token_source, "valid": True, "invalid_reasons": [],
         "consistency_pass": None, "task_success": None, "issues": [], "metrics": None,
     }
     try:
@@ -132,6 +140,7 @@ def verify_workload(database, workload, *, checkpoint="completed"):
         return report
 
     issues = report["issues"]
+    report["context_spec_id"] = task.get("context_spec_id")
     def issue(code, detail, step_id=None):
         issues.append({"code": code, "step_id": step_id, "detail": detail})
 
@@ -182,6 +191,7 @@ def verify_workload(database, workload, *, checkpoint="completed"):
     validator = Draft202012Validator(schema)
     prepared, staged, completed = {}, {}, []
     pending, last_context, halted, previous_epoch = None, None, False, 0
+    context_tokens = []  # latest committed context, for the append-only check
     seen_ids = set()
     for index, row in enumerate(rows, 1):
         record = row["record"]
@@ -215,6 +225,10 @@ def verify_workload(database, workload, *, checkpoint="completed"):
                     or _json(payload["args"]) != _json(step["args"])
                     or payload["request_fingerprint"] != _fingerprint(step)):
                 issue("LOG_PREPARE", "prepared request differs from workload", step_id)
+            if token_source == "model":
+                prompt, generated = payload["generation_prompt_token_ids"], payload["generated_token_ids"]
+                if not generated or len(prompt) <= len(context_tokens) or prompt[:len(context_tokens)] != context_tokens:
+                    issue("PROMPT_TOKENS", "prompt does not extend the committed context, or nothing was generated", step_id)
             prepared[step_id], pending = record, step_id
         elif kind == "TOOL_RESULT_COMMITTED":
             if pending != step_id or step_id in staged:
@@ -232,8 +246,14 @@ def verify_workload(database, workload, *, checkpoint="completed"):
                 issue("LOG_TRANSITION", "context lacks a unique staged result", step_id)
             elif payload["result_record_id"] != result["record_id"]:
                 issue("LOG_RESULT_REFERENCE", "context references wrong result record", step_id)
-            if payload["token_ids"] != step["token_ids"]:
+            if token_source == "scripted" and payload["token_ids"] != step["token_ids"]:
                 issue("CONTEXT_TOKENS", "scripted committed prefix differs from workload", step_id)
+            if token_source == "model" and step_id in prepared:
+                seen = (prepared[step_id]["payload"]["generation_prompt_token_ids"]
+                        + prepared[step_id]["payload"]["generated_token_ids"])
+                if len(payload["token_ids"]) <= len(seen) or payload["token_ids"][:len(seen)] != seen:
+                    issue("CONTEXT_TOKENS", "context does not extend the prompt and generation the model saw", step_id)
+            context_tokens = payload["token_ids"]
             completed.append(step_id)
             pending, last_context = None, record["record_id"]
         elif kind == "RECOVERY_ABSTAIN":
@@ -279,3 +299,41 @@ def verify_workload(database, workload, *, checkpoint="completed"):
         },
     )
     return report
+
+
+def committed_tokens(database, task_id):
+    """Token IDs of the latest committed context, read-only; None if nothing committed."""
+    task, _, _, rows = _snapshot(database, task_id)
+    pointer = task["context_record_id"]
+    if pointer is None:
+        return None
+    contexts = [row["record"] for row in rows if row["record"]["record_id"] == pointer
+                and row["record"]["record_type"] == "CONTEXT_COMMITTED"]
+    if len(contexts) != 1:
+        raise ValueError("durable context pointer does not identify one committed context")
+    return list(contexts[0]["payload"]["token_ids"])
+
+
+def verify_replay(database, workload, request):
+    """Check a replacement request against the faulted task's pre-fault snapshot.
+
+    This checks retained token evidence, not whether a real GPU lost KV state;
+    process identity/readiness and hardware evidence belong to the supervisor.
+    """
+    snapshot = verify_workload(database, workload, checkpoint="in_progress", token_source="model")
+    issues = []
+    if not snapshot["valid"] or not snapshot["consistency_pass"]:
+        issues.append("pre-fault snapshot failed protocol verification")
+    expected = committed_tokens(database, workload["task_id"]) if not issues else None
+    if not isinstance(request, dict):
+        request = {}
+    if request.get("task_id") != workload["task_id"] or request.get("context_spec_id") != snapshot.get("context_spec_id"):
+        issues.append("replacement request task/context identity mismatch")
+    prefix, prompt = request.get("prefix_token_ids"), request.get("prompt_token_ids")
+    token_list = lambda value: isinstance(value, list) and all(type(t) is int and t >= 0 for t in value)
+    if expected is None or not token_list(prefix) or prefix != expected:
+        issues.append("replayed prefix differs from the durable committed prefix")
+    if not token_list(prompt) or not token_list(prefix) or len(prompt) <= len(prefix) or prompt[:len(prefix)] != prefix:
+        issues.append("replacement inference prompt does not extend the replayed prefix")
+    return {"valid": not issues, "task_id": workload["task_id"], "context_spec_id": snapshot.get("context_spec_id"),
+            "committed_prefix_tokens": None if expected is None else len(expected), "issues": issues}

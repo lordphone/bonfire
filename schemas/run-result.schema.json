@@ -16,7 +16,8 @@
     "schema_version": {
       "enum": [
         "1.1.0",
-        "1.2.0"
+        "1.2.0",
+        "1.3.0"
       ]
     },
     "backend": {
@@ -162,6 +163,16 @@
           "minLength": 1
         }
       }
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "protocol_verification": {
+      "type": [
+        "object",
+        "null"
+      ]
     }
   },
   "allOf": [
@@ -199,7 +210,10 @@
       "if": {
         "properties": {
           "schema_version": {
-            "const": "1.2.0"
+            "enum": [
+              "1.2.0",
+              "1.3.0"
+            ]
           },
           "backend": {
             "const": "vllm"
@@ -506,6 +520,121 @@
             "minItems": 1
           }
         }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "1.3.0"
+          },
+          "backend": {
+            "const": "vllm"
+          }
+        },
+        "required": [
+          "schema_version",
+          "backend"
+        ]
+      },
+      "then": {
+        "required": [
+          "task_id"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "method": {
+                  "const": "outcomeserve"
+                },
+                "outcome": {
+                  "const": "COMPLETED"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "protocol_verification"
+              ],
+              "properties": {
+                "protocol_verification": {
+                  "type": "object",
+                  "required": [
+                    "valid",
+                    "token_source",
+                    "checkpoint",
+                    "consistency_pass",
+                    "task_success",
+                    "task_id",
+                    "context_spec_id"
+                  ],
+                  "properties": {
+                    "valid": {
+                      "const": true
+                    },
+                    "token_source": {
+                      "const": "model"
+                    },
+                    "checkpoint": {
+                      "const": "completed"
+                    },
+                    "consistency_pass": {
+                      "const": true
+                    },
+                    "task_success": {
+                      "const": true
+                    },
+                    "task_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "context_spec_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "method": {
+                  "const": "outcomeserve"
+                },
+                "outcome": {
+                  "const": "COMPLETED"
+                },
+                "no_fault": {
+                  "const": false
+                },
+                "fault_domain": {
+                  "const": "inference"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "protocol_verification": {
+                  "type": "object",
+                  "required": [
+                    "replay_valid"
+                  ],
+                  "properties": {
+                    "replay_valid": {
+                      "enum": [
+                        true,
+                        null
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
       }
     }
   ]

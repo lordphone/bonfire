@@ -118,7 +118,7 @@ def verify_business(database, workload):
         _business_oracle(prefix_inventory, steps[step_id], prefix_reorder)
     prefix_mismatches = (sum(inventory.get(k) != prefix_inventory.get(k) for k in set(inventory) | set(prefix_inventory))
                          + sum(reorder.get(k) != prefix_reorder.get(k) for k in set(reorder) | set(prefix_reorder)))
-    return {"valid": True, "consistency_pass": not issues,
+    return {"valid": True, "task_id": workload["task_id"], "consistency_pass": not issues,
             "task_success": not issues and all(result["ok"] for result in results.values()),
             "issues": sorted(set(issues)), "observed_inventory": inventory, "expected_final_inventory": expected,
             "metrics": {"inventory_mismatches": state_mismatches, "tool_state_mismatches": result_mismatches,

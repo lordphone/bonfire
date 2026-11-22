@@ -19,7 +19,7 @@ GOOD_RESOURCES = {"measurement_valid": True, "process_cpu_seconds": 3.0, "gpu_al
 
 def identity(method="outcomeserve", seed=33, prefix=8192, progress=0.5, no_fault=False, tier="1", order=None, **extra):
     order = order or (1 if (method == "restart") == (seed % 2 == 0) else 2)
-    value = {"run_id": f"s{seed}-L{prefix}-p{progress}-{method}-{no_fault}", "seed": seed, "method": method,
+    value = {"run_id": f"s{seed}-L{prefix}-p{progress}-{method}-{no_fault}", "task_id": "gpu-task", "seed": seed, "method": method,
              "tier": "1H" if no_fault else tier, "no_fault": no_fault, "fault_domain": "inference",
              "boundary": "DURING_GENERATION", "prefix_target_tokens": prefix,
              "requested_progress": None if no_fault else progress, "actual_progress": 1.0 if no_fault else progress,
@@ -49,8 +49,18 @@ def events(ident, *, task=0.0, fault=None, token=None, reset=None, verified=None
 
 
 def verification(duplicates=0, success=True):
-    return {"task_success": success, "metrics": {"duplicate_effects": duplicates, "tool_state_mismatches": 0,
+    return {"valid": True, "task_id": "gpu-task", "task_success": success,
+            "metrics": {"duplicate_effects": duplicates, "tool_state_mismatches": 0,
                                                  "inventory_mismatches": 0, "audit_complete": True}}
+
+
+def protocol_report(ident, *, exit_code=0):
+    if ident["method"] != "outcomeserve":
+        return None
+    report = {"valid": True, "task_id": ident["task_id"], "context_spec_id": ident["context_spec_id"],
+            "token_source": "model", "checkpoint": "halted" if exit_code == 3 else "completed",
+            "consistency_pass": True, "task_success": exit_code == 0, "issues": []}
+    return report
 
 
 def completed(method, seed, *, prefix=8192, progress=0.5, no_fault=False, total=60.0, tier="1"):
@@ -59,7 +69,7 @@ def completed(method, seed, *, prefix=8192, progress=0.5, no_fault=False, total=
         evs = events(ident, verified=total)
     else:
         evs = events(ident, fault=total / 2, token=total / 2 + 5, verified=total)
-    return assemble(ident, evs, verification(), GOOD_RESOURCES, runner_exit_code=0)
+    return assemble(ident, evs, verification(), GOOD_RESOURCES, runner_exit_code=0, protocol=protocol_report(ident))
 
 
 def test_completed_run_has_primary_and_secondary_intervals():
@@ -77,7 +87,7 @@ def test_first_new_token_before_the_fault_is_not_the_recovery_endpoint():
     ident = identity()
     rows = events(ident, fault=30, token=40, verified=60)
     rows.insert(1, {**rows[0], "event_type": "FIRST_NEW_TOKEN", "monotonic_ns": int(5e9), "sequence": 99})
-    result = assemble(ident, rows, verification(), GOOD_RESOURCES, runner_exit_code=0)
+    result = assemble(ident, rows, verification(), GOOD_RESOURCES, runner_exit_code=0, protocol=protocol_report(ident))
     assert result["fault_to_first_new_token_seconds"] == 10
 
 
@@ -90,7 +100,7 @@ def test_first_new_token_before_the_fault_is_not_the_recovery_endpoint():
 def test_failures_after_a_valid_injection_stay_valid_and_are_classified(exit_code, verify, outcome):
     ident = identity()
     result = assemble(ident, events(ident, fault=30, verified=60, failed=True), verify, GOOD_RESOURCES,
-                      runner_exit_code=exit_code, failure_reason="boom")
+                      runner_exit_code=exit_code, failure_reason="boom", protocol=protocol_report(ident, exit_code=exit_code))
     assert result["outcome"] == outcome and result["valid"] and not result["passed"]
     assert result["fault_applied"] and result["failure_reason"] == "boom"
 
@@ -111,7 +121,7 @@ def test_unestablished_fault_or_mixed_clocks_are_invalid_not_failed(mutate, reas
 
 def test_completed_run_without_resource_window_is_not_a_timing_sample():
     ident = identity()
-    result = assemble(ident, events(ident, fault=30, verified=60), verification(), None, runner_exit_code=0)
+    result = assemble(ident, events(ident, fault=30, verified=60), verification(), None, runner_exit_code=0, protocol=protocol_report(ident))
     assert result["outcome"] == "INFRASTRUCTURE_FAILURE" and not result["passed"]
 
 
@@ -141,7 +151,7 @@ def test_cli_builds_from_a_run_directory_and_never_overwrites(tmp_path):
     rows = events(ident, fault=30, token=35, verified=60)
     (run / "measurements.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows[:2]))
     (run / "runner-measurements.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows[2:]))
-    (run / "verification.json").write_text(json.dumps({"business": verification(), "protocol": None}))
+    (run / "verification.json").write_text(json.dumps({"business": verification(), "protocol": protocol_report(ident)}))
     (run / "resources.json").write_text(json.dumps(GOOD_RESOURCES))
     (run / "runner-exit.json").write_text(json.dumps({"exit_code": 0}))
     command = [sys.executable, str(ROOT / "scripts/build_run_result.py"), str(run),
@@ -254,7 +264,7 @@ def test_invalid_member_is_retained_and_blocks_all_relevant_estimates(no_fault):
                   and r["gpu_matrix"]["prefix_target_tokens"] == 2048)
     ident = identity("outcomeserve", victim["seed"], 2048, no_fault=no_fault)
     bad_events = events(ident, verified=60) if not no_fault else events(ident, fault=30, verified=60)
-    rows[rows.index(victim)] = assemble(ident, bad_events, verification(), GOOD_RESOURCES, runner_exit_code=0)
+    rows[rows.index(victim)] = assemble(ident, bad_events, verification(), GOOD_RESOURCES, runner_exit_code=0, protocol=protocol_report(ident))
     result = gpu_matrix_analysis(rows)
     cell = next(c for c in result["cells"] if c["prefix_target_tokens"] == 2048)
     assert result["outcomes_all_runs"]["outcomeserve"]["INVALID"] == 1
@@ -289,7 +299,7 @@ def test_missing_member_and_valid_failure_are_not_silently_filtered():
 def test_impossible_timing_never_becomes_a_completed_sample(task, fault, verified, outcome):
     ident = identity()
     result = assemble(ident, events(ident, task=task, fault=fault, verified=verified), verification(),
-                      GOOD_RESOURCES, runner_exit_code=0)
+                      GOOD_RESOURCES, runner_exit_code=0, protocol=protocol_report(ident))
     assert result["outcome"] == outcome and not result["passed"]
     assert result["failure_reason"]
 
@@ -297,10 +307,10 @@ def test_impossible_timing_never_becomes_a_completed_sample(task, fault, verifie
 def test_duplicate_completion_and_token_after_completion_do_not_define_endpoints():
     ident = identity()
     rows = events(ident, fault=30, token=70, verified=60)
-    result = assemble(ident, rows, verification(), GOOD_RESOURCES, runner_exit_code=0)
+    result = assemble(ident, rows, verification(), GOOD_RESOURCES, runner_exit_code=0, protocol=protocol_report(ident))
     assert result["passed"] and result["fault_to_first_new_token_seconds"] is None
     rows.append({**rows[-1], "sequence": 99})
-    result = assemble(ident, rows, verification(), GOOD_RESOURCES, runner_exit_code=0)
+    result = assemble(ident, rows, verification(), GOOD_RESOURCES, runner_exit_code=0, protocol=protocol_report(ident))
     assert result["outcome"] == "INFRASTRUCTURE_FAILURE" and result["valid"]
 
 
@@ -316,7 +326,7 @@ def test_abstention_is_not_inferred_to_be_unsafe_from_incomplete_final_inventory
     ident = identity()
     report = verification(success=False)
     report["metrics"]["inventory_mismatches"] = 2
-    result = assemble(ident, events(ident, fault=30), report, GOOD_RESOURCES, runner_exit_code=3)
+    result = assemble(ident, events(ident, fault=30), report, GOOD_RESOURCES, runner_exit_code=3, protocol=protocol_report(ident, exit_code=3))
     assert result["outcome"] == "ABSTAINED" and result["valid"]
     assert "not established" in result["failure_reason"]
 
@@ -374,7 +384,7 @@ def test_precision_check_requires_all_prefixes_and_positive_savings():
 def test_analyzer_retains_invalid_cell_and_rejects_mixed_input_before_writing(tmp_path):
     rows = [completed(m, seed) for seed in (33, 34) for m in ("restart", "outcomeserve")]
     ident = identity("outcomeserve", 34)
-    rows[-1] = assemble(ident, events(ident, verified=60), verification(), GOOD_RESOURCES, runner_exit_code=0)
+    rows[-1] = assemble(ident, events(ident, verified=60), verification(), GOOD_RESOURCES, runner_exit_code=0, protocol=protocol_report(ident))
     paths = []
     for i, row in enumerate(rows):
         path = tmp_path / f"result-{i}.json"
@@ -403,7 +413,7 @@ def test_abstention_with_a_wrong_committed_result_is_a_recovery_violation():
     ident = identity()
     report = verification(success=False)
     report["metrics"].update(inventory_mismatches=2, tool_state_mismatches=1)
-    result = assemble(ident, events(ident, fault=30), report, GOOD_RESOURCES, runner_exit_code=3)
+    result = assemble(ident, events(ident, fault=30), report, GOOD_RESOURCES, runner_exit_code=3, protocol=protocol_report(ident, exit_code=3))
     assert result["outcome"] == "RECOVERY_VIOLATION"
 
 

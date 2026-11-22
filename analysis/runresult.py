@@ -27,10 +27,10 @@ from typing import Any, Iterable
 
 from outcomeserve.contracts import validate_schema
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0"
 
 IDENTITY_FIELDS = (
-    "run_id", "seed", "method", "tier", "no_fault", "fault_domain", "boundary",
+    "run_id", "task_id", "seed", "method", "tier", "no_fault", "fault_domain", "boundary",
     "prefix_target_tokens", "requested_progress", "actual_progress", "apc", "method_order",
     "configuration_id", "context_spec_id", "business_fixture_sha256", "hardware_id", "gpu_name",
     "driver_version", "runtime_versions", "environment_lock_sha256",
@@ -57,9 +57,26 @@ def pair_key(identity: dict) -> str:
             f":apc-{str(identity['apc']).lower()}:{bool(identity['no_fault'])}")
 
 
-def read_events(paths: Iterable[str | Path]) -> list[dict]:
+RAW_FIELDS = {"event_type", "monotonic_ns", "clock_id"}
+
+
+def _from_raw(raw: dict, identity: dict, sequence: int) -> dict:
+    """A raw runner event (event_type, monotonic_ns, clock_id, other details) as a
+    measurement event of this run. The clock is kept, never rewritten."""
+    for field in ("run_id", "configuration_id", "task_id"):
+        if field in raw and raw[field] != identity[field]:
+            raise ValueError(f"raw runner event belongs to another {field}")
+    return {"schema_version": "1.1.0", "run_id": identity["run_id"], "configuration_id": identity["configuration_id"],
+            "clock_id": raw["clock_id"], "sequence": sequence, "event_type": raw["event_type"],
+            "monotonic_ns": raw["monotonic_ns"], "details": {k: v for k, v in raw.items() if k not in RAW_FIELDS}}
+
+
+def read_events(paths: Iterable[str | Path], identity: dict | None = None) -> list[dict]:
+    """Measurement events from each file. With ``identity``, lines in the raw runner
+    format (no ``schema_version``) are converted; sequences stay local to each file."""
     events = []
     for path in paths:
+        sequence = 0
         for number, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
             if not line.strip():
                 continue
@@ -67,6 +84,10 @@ def read_events(paths: Iterable[str | Path]) -> list[dict]:
                 event = json.loads(line)
             except ValueError as exc:
                 raise ValueError(f"{path}:{number}: not JSON") from exc
+            sequence += 1
+            if identity is not None and isinstance(event, dict) and "schema_version" not in event \
+                    and RAW_FIELDS <= set(event):
+                event = _from_raw(event, identity, sequence)
             validate_schema("measurement-event", event)
             events.append(event)
     return events
@@ -112,12 +133,50 @@ def _check_identity(identity: dict) -> list[str]:
     return problems
 
 
+def _protocol_problem(identity, protocol, exit_code):
+    if identity["method"] != "outcomeserve":
+        return None
+    if not isinstance(protocol, dict):
+        return "OutcomeServe protocol report missing"
+    if protocol.get("valid") is not True:
+        return "protocol evidence is unreadable or invalid"
+    for key, expected in (("task_id", identity["task_id"]), ("context_spec_id", identity["context_spec_id"]),
+                          ("token_source", "model")):
+        if protocol.get(key) != expected:
+            return f"protocol report {key} mismatch"
+    if protocol.get("checkpoint") not in {"completed", "halted", "in_progress"}:
+        return "protocol checkpoint missing or unsupported"
+    required = {EXIT_COMPLETED: "completed", EXIT_ABSTAINED: "halted"}.get(exit_code)
+    if required and protocol["checkpoint"] != required:
+        return f"runner exit {exit_code} requires protocol checkpoint {required}"
+    if type(protocol.get("consistency_pass")) is not bool or not isinstance(protocol.get("issues"), list):
+        return "protocol consistency verdict missing"
+    if protocol["consistency_pass"] and protocol["issues"]:
+        return "protocol verdict contradicts its issues"
+    if exit_code == EXIT_COMPLETED and protocol["consistency_pass"] and protocol.get("task_success") is not True:
+        return "protocol does not establish completed context"
+    # Optional extra evidence. The model-mode log check already proves the replayed
+    # prompt extends the durable committed prefix (PROMPT_TOKENS), so it is not required.
+    replay = protocol.get("replay")
+    if replay is not None and (not isinstance(replay, dict) or type(replay.get("valid")) is not bool
+                               or replay.get("task_id") != identity["task_id"]
+                               or replay.get("context_spec_id") != identity["context_spec_id"]):
+        return "replay evidence is malformed or belongs to another task/context"
+    return None
+
+
 def assemble(identity: dict, events: list[dict], verification: dict | None, resources: dict | None, *,
-             runner_exit_code: int | None, failure_reason: str | None = None) -> dict:
-    """Build and validate one C6 result. Raises if the identity itself is unusable."""
+             runner_exit_code: int | None, failure_reason: str | None = None, protocol: dict | None = None,
+             evidence_errors: Iterable[str] = ()) -> dict:
+    """Build and validate one C6 result. Raises if the identity itself is unusable.
+
+    ``verification`` is the business verifier report. Successful OutcomeServe
+    results require an identity-matched completed model-mode protocol report."""
     problems = _check_identity(identity)
     if problems:
         raise ValueError("; ".join(problems))
+    if protocol is not None and identity["method"] != "outcomeserve":
+        raise ValueError("only OutcomeServe runs keep a durable log to verify")
     for event in events:
         validate_schema("measurement-event", event)
     invalid: list[str] = []
@@ -147,23 +206,38 @@ def assemble(identity: dict, events: list[dict], verification: dict | None, reso
     fault_applied = fault_count == 1 and not identity["no_fault"]
     measured = timings(events) if not invalid else dict.fromkeys(timings([]), None)
 
-    metrics = (verification or {}).get("metrics", {})
+    business_report = verification if isinstance(verification, dict) else {}
+    metrics = business_report.get("metrics", {})
+    if not isinstance(metrics, dict):
+        metrics = {}
     duplicates = metrics.get("duplicate_effects")
-    verified_ok = bool(verification and verification.get("task_success")) and duplicates == 0
+    verified_ok = business_report.get("task_success") is True and duplicates == 0
     resources = resources if isinstance(resources, dict) and "measurement_valid" in resources else {
         "measurement_valid": False, "error": "resource summary missing"}
+    evidence_errors = list(evidence_errors)
+    protocol_problem = _protocol_problem(identity, protocol, runner_exit_code)
 
     if invalid:
         outcome = "INVALID"
     elif runner_exit_code == EXIT_MODEL_ERROR:
         outcome = "MODEL_ERROR"
-    elif verification is None:
+    elif business_report.get("valid") is not True or business_report.get("task_id") != identity["task_id"]:
         outcome = "INFRASTRUCTURE_FAILURE"
+        failure_reason = failure_reason or "business report missing, invalid or belongs to another task_id"
+    elif evidence_errors:
+        outcome = "INFRASTRUCTURE_FAILURE"
+        failure_reason = "; ".join(evidence_errors)
     elif (duplicates is None or duplicates > 0 or metrics.get("audit_complete") is False
-          or metrics.get("tool_state_mismatches")):
+          or metrics.get("tool_state_mismatches")
+          or (protocol_problem is None and protocol is not None and (
+              protocol.get("consistency_pass") is False or (isinstance(protocol.get("replay"), dict)
+                                                           and protocol["replay"].get("valid") is False)))):
         # A committed result that disagrees with the oracle is a violation even
         # after a halt; only the unfinished final inventory is expected then.
         outcome = "RECOVERY_VIOLATION"
+    elif protocol_problem:
+        outcome = "INFRASTRUCTURE_FAILURE"
+        failure_reason = protocol_problem
     elif runner_exit_code == EXIT_ABSTAINED:
         # Query capability does not establish availability at the decision time.
         # Keep abstention distinct; a final snapshot cannot prove a false abstain.
@@ -187,10 +261,11 @@ def assemble(identity: dict, events: list[dict], verification: dict | None, reso
     if not passed and failure_reason is None:
         failure_reason = "; ".join(invalid) or {
             "MODEL_ERROR": "runner reported a model error",
-            "RECOVERY_VIOLATION": "business verification found inconsistent or incomplete effect evidence",
+            "RECOVERY_VIOLATION": "business or protocol verification found inconsistent or incomplete evidence",
             "ABSTAINED": "runner abstained; decision correctness is not established by a final snapshot",
             "INFRASTRUCTURE_FAILURE": "runner, verification or completion evidence incomplete",
         }.get(outcome)
+    protocol_report = protocol if isinstance(protocol, dict) else {}
 
     gpu = {key: identity[key] for key in ("tier", "prefix_target_tokens", "method_order", "gpu_name", "driver_version")}
     if "actual_prefix_tokens_at_fault" in identity:
@@ -203,7 +278,15 @@ def assemble(identity: dict, events: list[dict], verification: dict | None, reso
         "fault_applied": fault_applied, "fault_count": fault_count, "invalid_reasons": invalid,
         "failure_reason": None if passed else failure_reason, "runner_exit_code": runner_exit_code,
         "metrics": metrics, "resources": resources, **measured,
+        "evidence_errors": evidence_errors,
+        "protocol_issues": None if protocol is None else [i.get("code", "UNKNOWN") for i in (protocol_report.get("issues") or [])
+                                                         if isinstance(i, dict)],
+        "protocol_verification": None if protocol is None else {key: protocol_report.get(key) for key in
+            ("valid", "task_id", "context_spec_id", "token_source", "checkpoint", "consistency_pass", "task_success")},
     }
+    if result["protocol_verification"] is not None:
+        replay = protocol_report.get("replay")
+        result["protocol_verification"]["replay_valid"] = replay.get("valid") if isinstance(replay, dict) else None
     for key, value in measured.items():
         if value is not None and not math.isfinite(value):
             raise ValueError(f"{key} is not finite")
@@ -211,7 +294,8 @@ def assemble(identity: dict, events: list[dict], verification: dict | None, reso
     return result
 
 
-def assemble_directory(run_dir: str | Path, *, event_files: Iterable[str] = ("measurements.jsonl",)) -> dict:
+def assemble_directory(run_dir: str | Path, *, event_files: Iterable[str] = ("measurements.jsonl",),
+                       verification_file: str = "verification.json") -> dict:
     """Assemble from the retained files of one run directory (see docs/run-result.md)."""
     run_dir = Path(run_dir)
     load = lambda name: json.loads((run_dir / name).read_text(encoding="utf-8")) if (run_dir / name).exists() else None
@@ -219,9 +303,16 @@ def assemble_directory(run_dir: str | Path, *, event_files: Iterable[str] = ("me
     if identity is None:
         raise FileNotFoundError(run_dir / "identity.json")
     outcome = load("runner-exit.json") or {}
-    verification = load("verification.json")
+    verification, protocol = load(verification_file), None
     if isinstance(verification, dict) and "business" in verification:
-        verification = verification["business"]
-    files = [run_dir / name for name in event_files if (run_dir / name).exists()]
-    return assemble(identity, read_events(files), verification, load("resources.json"),
-                    runner_exit_code=outcome.get("exit_code"), failure_reason=outcome.get("failure_reason"))
+        verification, protocol = verification["business"], verification.get("protocol")
+    files, missing = [], []
+    for name in event_files:
+        path = run_dir / name
+        if not path.is_file():
+            missing.append(f"required event file missing: {name}")
+        else:
+            files.append(path)
+    return assemble(identity, read_events(files, identity), verification, load("resources.json"),
+                    runner_exit_code=outcome.get("exit_code"), failure_reason=outcome.get("failure_reason"),
+                    protocol=protocol, evidence_errors=missing)

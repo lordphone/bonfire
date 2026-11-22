@@ -24,11 +24,13 @@ def main(argv=None):
     parser.add_argument("--events", nargs="+", default=["measurements.jsonl"],
                         help="measurement event files inside run_dir, all on one clock_id")
     parser.add_argument("--output", type=Path, help="default: run_dir/result.json")
+    parser.add_argument("--verification-file", default="verification.json",
+                        help="verification file inside run_dir, e.g. verification-rechecked.json")
     args = parser.parse_args(argv)
     output = args.output or args.run_dir / "result.json"
     if output.exists():
         parser.error(f"{output} exists; raw results are never rewritten")
-    result = assemble_directory(args.run_dir, event_files=args.events)
+    result = assemble_directory(args.run_dir, event_files=args.events, verification_file=args.verification_file)
     # Exclusive creation also prevents a concurrent builder from overwriting it.
     try:
         with output.open("x", encoding="utf-8") as stream:

@@ -10,7 +10,7 @@ from outcomeserve.contracts import validate_schema
 PAIR_FIELDS = ("backend", "steps", "actual_progress", "fault_domain", "boundary", "purpose", "no_fault",
                "context_spec_id", "business_fixture_sha256", "hardware_id", "runtime_versions",
                "environment_lock_sha256", "apc")
-# C6 1.2.0 main-matrix runs also pair on the cell and the platform identity.
+# C6 1.3.0 main-matrix runs also pair on the cell and the platform identity.
 GPU_PAIR_FIELDS = ("seed", "requested_progress", "gpu_matrix.tier", "gpu_matrix.prefix_target_tokens",
                    "gpu_matrix.gpu_name", "gpu_matrix.driver_version")
 _MISSING = object()
@@ -26,7 +26,7 @@ def _field(record, path):
 
 
 def _is_gpu_matrix(record):
-    return record.get("schema_version") == "1.2.0" and record.get("backend") == "vllm"
+    return record.get("schema_version") == "1.3.0" and record.get("backend") == "vllm"
 
 
 def _metric(record, path):
@@ -177,7 +177,7 @@ def _gpu_cell(record):
 
 
 def gpu_matrix_analysis(records, *, h_precision_fraction=0.25, bootstrap_samples=2000, seed=33):
-    """Main-matrix (C6 1.2.0, vLLM) analysis by prefix length L and progress f.
+    """Main-matrix (C6 1.3.0, vLLM) analysis by prefix length L and progress f.
 
     * Delta T(L, f): restart minus OutcomeServe, fault to verified completion (primary).
     * Crash-to-first-new-token difference (secondary) and reset time, reported separately.
