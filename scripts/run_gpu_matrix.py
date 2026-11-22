@@ -37,6 +37,8 @@ def main():
     parser.add_argument("tier", nargs="?", choices=sorted(TIERS))
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--seeds", type=int, help="override the tier's paired-seed count (only to extend 1H)")
+    parser.add_argument("--rerun-failed", action="store_true",
+                        help="move each failed run to <cell>/rejected/ (kept as evidence) and run it again")
     args = parser.parse_args()
     if args.mode == "pilot":
         # Cut-rule gate: fault-free and inference-kill runs at 8K / 50% with outcomeserve.runner.
@@ -50,7 +52,11 @@ def main():
     for index, (method, prefix, progress, seed) in enumerate(plan, 1):
         out = base / cell_id(prefix, progress) / f"s{seed:03d}-{method}"
         if (out / "result.json").exists():
-            continue
+            if not (args.rerun_failed and not json.loads((out / "result.json").read_text())["passed"]):
+                continue
+            rejected = out.parent / "rejected"
+            rejected.mkdir(exist_ok=True)
+            out.rename(rejected / f"{out.name}-{len(list(rejected.glob(out.name + '-*'))) + 1}")
         result = run_one(out, method=method, prefix=prefix, progress=progress, seed=seed)
         failures += not result["passed"]
         print(json.dumps({"n": f"{index}/{len(plan)}", "run": result["run_id"], "passed": result["passed"],
