@@ -3,17 +3,21 @@
     python -m outcomeserve.runner --db runtime.sqlite --workload workload.json \
         --tool-endpoint http://127.0.0.1:PORT --inference-endpoint http://127.0.0.1:8000 \
         --context-spec context.json --template examples/gpu-pilot-prompt.txt \
-        --events runner-events.jsonl --clock-id CLOCK --epoch 1
+        --events runner-events.jsonl --run-id RUN --configuration-id CONFIG --clock-id CLOCK --epoch 1
 
-Exit codes: 0 completed, 3 abstained, 4 restart baseline needs a supervisor reset.
+Events are measurement-event 1.1.0 records; run_id, configuration_id and clock_id
+come from the supervisor so they join its FAULT_APPLIED and VERIFIED_COMPLETE.
+
+Exit codes: 0 completed, 1 protocol failure, 3 abstained, 4 restart baseline
+needs a supervisor reset, 5 model error (generated call differs from the request).
 """
 
 import argparse
 import hashlib
 import json
 from pathlib import Path
-import time
 
+from outcomeserve.measurement import Measurements
 from outcomeserve.runner.recovering import BOUNDARIES, RecoveringRunner, RunnerConfig, build_instruction
 from outcomeserve.serving.client import CompletionBackend
 from outcomeserve.storage import StateStore
@@ -23,7 +27,8 @@ from workloads import load_workload
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="outcomeserve.runner")
-    for name in ("db", "workload", "tool-endpoint", "inference-endpoint", "context-spec", "template", "events", "clock-id"):
+    for name in ("db", "workload", "tool-endpoint", "inference-endpoint", "context-spec", "template", "events",
+                 "run-id", "configuration-id", "clock-id"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--epoch", type=int, required=True)
     parser.add_argument("--method", choices=["outcomeserve", "restart"], default="outcomeserve")
@@ -42,13 +47,11 @@ def main(argv=None):
     if hashlib.sha256(template.encode()).hexdigest() != spec["chat_template_sha256"]:
         parser.error("prompt template differs from the pinned context digest")
     workload = load_workload(args.workload)
-    events = Path(args.events)
+    events = Measurements(args.events, run_id=args.run_id, configuration_id=args.configuration_id,
+                          clock_id=args.clock_id)
 
     def emit(event_type, step_id, **details):
-        with events.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps({"event_type": event_type, "monotonic_ns": time.perf_counter_ns(),
-                                     "clock_id": args.clock_id, "epoch": args.epoch, "step_id": step_id,
-                                     **details}) + "\n")
+        events.emit(event_type, epoch=args.epoch, step_id=step_id, **details)
 
     config = RunnerConfig(workload=workload, context_spec=spec, epoch=args.epoch, method=args.method, seed=args.seed,
                           instruction=build_instruction(template, workload, args.padding_repeats),

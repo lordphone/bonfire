@@ -108,10 +108,17 @@ def validate_exchange(request: dict, response: dict) -> None:
         raise ContractError("submit cannot return NOT_COMMITTED")
 
 
-def validate_log(records: list[dict]) -> None:
+def validate_log(records: list[dict], *, persisted: int = 0) -> None:
+    """Check every record's schema and the whole log's invariants.
+
+    ``persisted`` leading records were already schema-checked before their insert
+    into the append-only log, so only the rest are schema-checked again; the
+    cross-record invariants below always run on the full log. Re-checking every
+    stored record (each carrying a full token prefix) made each append O(log size).
+    """
     if not records:
         raise ContractError("log must not be empty")
-    for record in records:
+    for record in records[persisted:]:
         validate_schema("durable-log", record)
     for field in ("task_id", "model_revision", "schema_version"):
         if len({record[field] for record in records}) != 1:

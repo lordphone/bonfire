@@ -80,7 +80,7 @@ class DurableLog:
                 return {"status": "SEQUENCE_CONFLICT", "current_sequence": len(records)}
             record = {**body, "sequence": len(records) + 1}
             try:
-                validate_log(records + [record])
+                validate_log(records + [record], persisted=len(records))
                 if task["halted"]:
                     raise ContractError("task is halted")
             except ContractError as exc:
@@ -141,7 +141,7 @@ class DurableLog:
                 return {"status": "INVALID_TRANSITION", "reason": "context spec is not bound to task"}
             added = [{**result_body, "sequence": len(records) + 1}, {**context_body, "sequence": len(records) + 2}]
             try:
-                validate_log(records + added)
+                validate_log(records + added, persisted=len(records))
                 if task["halted"]:
                     raise ContractError("task is halted")
             except ContractError as exc:

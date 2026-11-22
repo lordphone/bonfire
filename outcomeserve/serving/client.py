@@ -70,9 +70,12 @@ class CompletionBackend:
                     return
         raise InferenceError("no unfinished token-ID stream observed; fault precondition not met")
 
-    def generate_stream(self, prefix_token_ids, on_first_token, *, max_tokens=256, seed=33):
+    def generate_stream(self, prefix_token_ids, on_first_token, *, max_tokens=256, seed=33, json_schema=None):
+        """json_schema, if given, constrains the output with vLLM structured outputs."""
         payload = {"model": self.model, "prompt": prefix_token_ids, "max_tokens": max_tokens,
                    "temperature": 0, "seed": seed, "return_token_ids": True, "stream": True}
+        if json_schema is not None:
+            payload["structured_outputs"] = {"json": json_schema}
         request = Request(self.endpoint + "/v1/completions", data=json.dumps(payload).encode(),
                           headers={"Content-Type": "application/json"})
         tokens, text, observed, finished = [], [], False, False

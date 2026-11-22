@@ -14,6 +14,14 @@ If the inference worker dies mid-step, the runner survives: it waits for the
 supervisor's replacement, rebuilds the prefix from the durable log, and retries
 the step. The supervisor owns process lifecycle, epochs and fault timing; the
 runner only exposes barriers (ready file + blocking stdin line) at each boundary.
+
+Generation is constrained to the step's business request (vLLM structured
+outputs, plan section 9), so the GPU matrix measures recovery, not model
+accuracy. A generated call that still differs is a model error (exit 5), kept
+apart from protocol failures (exit 1).
+
+The "restart" method relies on the supervisor resetting the tool database, so
+it is a performance baseline only, not the CPU correctness restart baseline.
 """
 
 from __future__ import annotations
@@ -35,15 +43,30 @@ from outcomeserve.tools.client import AcknowledgmentLost, ToolClient
 STEP_PROMPT = "\nExecute next request as JSON tool_name/args: "
 RESULT_PROMPT = "\nTool result: "
 
-EXIT_COMPLETED, EXIT_ABSTAINED, EXIT_RESTART_REQUIRED = 0, 3, 4
+EXIT_COMPLETED, EXIT_ABSTAINED, EXIT_RESTART_REQUIRED, EXIT_MODEL_ERROR = 0, 3, 4, 5
 
 BOUNDARIES = ("DURING_GENERATION", "PRE_DISPATCH", "POST_TOOL_COMMIT_PRE_RESULT_LOG",
               "POST_CONTEXT_COMMIT", "DURING_RECOVERY")
 
 
+class ModelError(InferenceError):
+    """The generated call does not match the business request."""
+
+
 def build_instruction(template: str, workload: dict, padding_repeats: int = 0) -> str:
-    """The pilot's instruction text; the only text tokenized before any generation."""
-    return template.format(task=json.dumps(workload["steps"]), padding="context " * padding_repeats)
+    """The pilot's instruction text; the only text tokenized before any generation.
+
+    The task lists only the calls; step and op IDs and the CPU workload's scripted
+    token IDs are bookkeeping, and with them a 20-step task alone exceeds 2K tokens.
+    """
+    task = [{"tool_name": step["tool_name"], "args": step["args"]} for step in workload["steps"]]
+    return template.format(task=json.dumps(task), padding="context " * padding_repeats)
+
+
+def call_schema(expected: dict) -> dict:
+    """JSON schema that admits exactly the expected call."""
+    return {"type": "object", "additionalProperties": False, "required": ["tool_name", "args"],
+            "properties": {"tool_name": {"const": expected["tool_name"]}, "args": {"const": expected["args"]}}}
 
 
 @dataclass
@@ -100,6 +123,9 @@ class RecoveringRunner:
             step = steps[index]
             try:
                 prompt, answer = self._generate(step, prefix, measure_resume=resuming)
+            except ModelError as exc:
+                self.emit("MODEL_ERROR", step["step_id"], reason=str(exc))
+                return EXIT_MODEL_ERROR
             except InferenceUnavailable as exc:
                 self.emit("INFERENCE_LOST", step["step_id"], reason=str(exc))
                 if self.config.method == "restart":
@@ -177,10 +203,15 @@ class RecoveringRunner:
         if measure_resume:
             self.emit("PREFILL_STARTED", step["step_id"], committed_prefix_tokens=len(prefix),
                       prompt_tokens=len(prompt))
-        answer = self.model.generate_stream(prompt, first_token, max_tokens=self.config.max_tokens,
-                                            seed=self.config.seed)
+        try:
+            answer = self.model.generate_stream(prompt, first_token, max_tokens=self.config.max_tokens,
+                                                seed=self.config.seed, json_schema=call_schema(expected))
+        except InferenceUnavailable:
+            raise
+        except InferenceError as exc:
+            raise ModelError(f"{step['step_id']}: {exc}") from exc
         if json.dumps(answer["call"], sort_keys=True) != json.dumps(expected, sort_keys=True):
-            raise InferenceError(f"generated call for {step['step_id']} does not match the business request")
+            raise ModelError(f"generated call for {step['step_id']} does not match the business request")
         return prompt, answer
 
     def _execute(self, step: dict, prompt: list[int], answer: dict) -> list[int] | None:

@@ -34,7 +34,7 @@ def answer_for(prompt_ids):
     return json.dumps(json.loads(text[start + len(STEP_PROMPT):]))
 
 
-def serve(port, model, chunk_chars, chunk_delay):
+def serve(port, model, chunk_chars, chunk_delay, wrong_answers=False):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -64,6 +64,8 @@ def serve(port, model, chunk_chars, chunk_delay):
                 self.send_json({"error": "unsupported request"}, 400)
                 return
             text = answer_for(body["prompt"])
+            if wrong_answers:  # a model error: a well-formed call for some other request
+                text = json.dumps({"tool_name": "read_inventory", "args": {"sku": "item-z"}})
             if not body.get("stream"):
                 self.send_json({"choices": [{"text": text, "token_ids": tokenize(text), "finish_reason": "stop"}],
                                 "usage": {"prompt_tokens": len(body["prompt"]), "completion_tokens": len(text)}})
@@ -96,8 +98,9 @@ def main():
     parser.add_argument("--model", default="Qwen/Qwen3-4B")
     parser.add_argument("--chunk-chars", type=int, default=4)
     parser.add_argument("--chunk-delay", type=float, default=0.002)
+    parser.add_argument("--wrong-answers", action="store_true")
     args = parser.parse_args()
-    serve(args.port, args.model, args.chunk_chars, args.chunk_delay)
+    serve(args.port, args.model, args.chunk_chars, args.chunk_delay, args.wrong_answers)
 
 
 if __name__ == "__main__":

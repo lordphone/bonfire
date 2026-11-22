@@ -16,7 +16,7 @@ import time
 import pytest
 
 from experiments.common import ROOT, _ready, save
-from outcomeserve.contracts import validate_log
+from outcomeserve.contracts import validate_log, validate_schema
 from outcomeserve.log import DurableLog
 from outcomeserve.serving.client import CompletionBackend, InferenceUnavailable
 from outcomeserve.storage import StateStore
@@ -39,8 +39,8 @@ def context_spec():
 class Stack:
     """Test supervisor: tool service, inference server, runner attempts."""
 
-    def __init__(self, directory: Path, method: str = "outcomeserve"):
-        self.dir, self.method = directory, method
+    def __init__(self, directory: Path, method: str = "outcomeserve", inference_flags=()):
+        self.dir, self.method, self.inference_flags = directory, method, list(inference_flags)
         self.workload = make_inventory_workload("gpu-int", seed=33, steps=5)
         self.task = self.workload["task_id"]
         save(directory / "workload.json", self.workload)
@@ -58,7 +58,8 @@ class Stack:
         self.epoch, self.runners = 1, []
 
     def start_inference(self):
-        self.inference = subprocess.Popen([sys.executable, str(FAKE_VLLM), "--port", str(self.inference_port)],
+        self.inference = subprocess.Popen([sys.executable, str(FAKE_VLLM), "--port", str(self.inference_port),
+                                           *self.inference_flags],
                                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         self.inference_port = _ready(self.inference, 15)["port"]
 
@@ -72,7 +73,8 @@ class Stack:
                    "--tool-endpoint", tool_endpoint or self.tool_endpoint,
                    "--inference-endpoint", f"http://127.0.0.1:{self.inference_port}",
                    "--context-spec", str(self.dir / "context.json"), "--template", str(TEMPLATE),
-                   "--events", str(self.events_path), "--clock-id", "test-clock",
+                   "--events", str(self.events_path), "--run-id", "test-run", "--configuration-id", "test-config",
+                   "--clock-id", "test-clock",
                    "--epoch", str(self.epoch), "--method", self.method, "--inference-wait", "20"]
         if pause_at:
             command += ["--pause-at", pause_at, "--pause-step", pause_step,
@@ -113,6 +115,11 @@ class Stack:
 
     def events(self, epoch=None):
         rows = [json.loads(line) for line in self.events_path.read_text().splitlines()]
+        for row in rows:
+            validate_schema("measurement-event", row)
+        assert [r["sequence"] for r in rows] == list(range(1, len(rows) + 1))
+        assert {r["clock_id"] for r in rows} == {"test-clock"}
+        rows = [{**r["details"], "event_type": r["event_type"]} for r in rows]
         return [r for r in rows if epoch is None or r["epoch"] == epoch]
 
     def committed_prefix(self):
@@ -133,10 +140,10 @@ class Stack:
 def stack(tmp_path):
     created = []
 
-    def make(method="outcomeserve", name="run"):
+    def make(method="outcomeserve", name="run", inference_flags=()):
         directory = tmp_path / name
         directory.mkdir()
-        created.append(Stack(directory, method))
+        created.append(Stack(directory, method, inference_flags))
         return created[-1]
 
     yield make
@@ -270,3 +277,13 @@ def test_stream_cut_without_finish_reason_is_inference_loss_not_a_model_error(tm
             server.kill()
         server.wait(timeout=10)
         server.stdout.close()
+
+
+def test_model_error_exits_5_and_is_not_a_protocol_failure(stack):
+    run = stack(inference_flags=["--wrong-answers"])
+    code, errors = run.finish(run.launch())
+
+    assert code == 5, errors
+    events = run.events()
+    assert events[-1]["event_type"] == "MODEL_ERROR" and events[-1]["step_id"] == "step-01"
+    assert DurableLog(run.store).read(run.task) == []  # nothing was prepared or dispatched
