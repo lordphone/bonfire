@@ -8,7 +8,8 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from analysis.pipeline import paired_comparison, whole_task_break_even
+from analysis.pipeline import gpu_matrix_analysis, outcome_counts, paired_comparison, whole_task_break_even
+from outcomeserve.contracts import validate_schema
 
 
 def main():
@@ -24,6 +25,11 @@ def main():
     if not paths:
         parser.error("no result.json files found; no empty success analysis")
     records = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
+    for record in records:
+        validate_schema("run-result", record)
+    # Validate grouping before creating output files, including the H/S linkage.
+    gpu = [r for r in records if r.get("schema_version") == "1.2.0" and r.get("backend") == "vllm"]
+    matrix = gpu_matrix_analysis(gpu) if gpu else None
     # Different settings are never pooled: pair_key without the seed identifies a cell.
     cells = {}
     for record in records:
@@ -54,6 +60,28 @@ def main():
                 estimate = comparison["estimate"] or {}
                 writer.writerow([setting, metric, comparison["total_pairs"], comparison["complete_pairs"],
                     estimate.get("mean_restart_minus_outcomeserve"), estimate.get("bootstrap_ci95"), len(comparison["incomplete_pairs"])])
+    outcomes = {setting: outcome_counts(rows) for setting, rows in cells.items()}
+    (args.output / "outcomes.json").write_text(json.dumps(outcomes, indent=2) + "\n", encoding="utf-8")
+    if matrix is not None:
+        (args.output / "gpu-matrix.json").write_text(json.dumps(matrix, indent=2) + "\n", encoding="utf-8")
+        with (args.output / "gpu-heatmap.csv").open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.writer(stream)
+            writer.writerow(["prefix_target_tokens", "requested_progress", "tiers", "complete_pairs", "total_pairs",
+                             "delta_T_mean_seconds", "delta_T_ci95_low", "delta_T_ci95_high",
+                             "S_whole_task_mean_seconds", "H_seconds", "break_even_q", "non_completed_runs"])
+            for cell in matrix["cells"]:
+                primary = cell["delta_T_fault_to_verified"]
+                estimate = primary["estimate"] or {}
+                interval = estimate.get("bootstrap_ci95") or [None, None]
+                saving = cell["whole_task_saving_S"]["estimate"] or {}
+                h = matrix["overhead_H"].get(cell["prefix_target_tokens"], {}).get("H_seconds")
+                failures = sum(count for row in cell["outcomes"].values()
+                               for key, count in row.items() if key not in {"COMPLETED", "reasons"})
+                writer.writerow([cell["prefix_target_tokens"], cell["requested_progress"], "+".join(cell["tiers"]),
+                                 primary["complete_pairs"], primary["total_pairs"],
+                                 estimate.get("mean_restart_minus_outcomeserve"), interval[0], interval[1],
+                                 saving.get("mean_restart_minus_outcomeserve"), h,
+                                 (cell["break_even"] or {}).get("break_even_q"), failures])
     print(json.dumps(result, indent=2))
     return 0
 
