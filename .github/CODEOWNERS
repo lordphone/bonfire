@@ -1,0 +1,38 @@
+# Owner and required reviewer per module, from the module map in
+# docs/work-distribution.md. GitHub requests review from everyone listed
+# except the PR author, so each line names the owner and the reviewer.
+# Shirley: @kikyou7777 · Lordphone: @lordphone · Victoria: @VictoriaZQY
+
+# Shirley
+/outcomeserve/runner/              @kikyou7777 @VictoriaZQY
+/outcomeserve/recovery/            @kikyou7777 @VictoriaZQY
+/outcomeserve/serving/client.py    @kikyou7777 @lordphone
+/docs/protocol.md                  @kikyou7777 @VictoriaZQY @lordphone
+/analysis/costmodel/               @kikyou7777 @VictoriaZQY @lordphone
+
+# Lordphone
+/outcomeserve/serving/process.py   @lordphone @kikyou7777
+/outcomeserve/supervisor/          @lordphone @kikyou7777
+/outcomeserve/processes.py         @lordphone @kikyou7777
+/outcomeserve/faults/              @lordphone @kikyou7777 @VictoriaZQY
+/outcomeserve/telemetry/           @lordphone @VictoriaZQY
+/outcomeserve/measurement.py       @lordphone @VictoriaZQY
+/experiments/gpu/                  @lordphone @kikyou7777 @VictoriaZQY
+/experiments/spike/                @lordphone @kikyou7777 @VictoriaZQY
+/infra/                            @lordphone @kikyou7777
+
+# Victoria
+/outcomeserve/tools/               @VictoriaZQY @kikyou7777
+/outcomeserve/log/                 @VictoriaZQY @kikyou7777
+/outcomeserve/storage.py           @VictoriaZQY @kikyou7777
+/outcomeserve/context.py           @VictoriaZQY @kikyou7777
+/outcomeserve/verify/              @VictoriaZQY @kikyou7777
+/workloads/                        @VictoriaZQY @kikyou7777
+/experiments/cpu/                  @VictoriaZQY @kikyou7777
+/analysis/pipeline/                @VictoriaZQY @lordphone
+
+# Shared contracts and project files
+/schemas/                          @kikyou7777 @lordphone @VictoriaZQY
+/.github/                          @kikyou7777 @lordphone @VictoriaZQY
+/pyproject.toml                    @kikyou7777 @lordphone @VictoriaZQY
+/docs/work-distribution.md         @kikyou7777 @lordphone @VictoriaZQY
