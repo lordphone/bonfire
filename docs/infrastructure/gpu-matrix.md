@@ -76,3 +76,13 @@ The runner writes measurement-event 1.1.0 records (`schemas/measurement-event.sc
 `FIRST_NEW_TOKEN` plays the role of the telemetry schema's `NEXT_TOKEN_EMITTED`; there is no separate `PREFILL_FINISHED`, because the client cannot see where prefill ends.
 
 The supervisor's `measurements.jsonl` adds `RUN_STARTED`, `INFERENCE_START_REQUESTED` / `INFERENCE_READY` (with `instance`), `TASK_STARTED`, `RUNNER_LAUNCHED`, `FAULT_APPLIED`, `INFERENCE_KILLED`, `TOOL_RESET_STARTED` / `_FINISHED` (restart only), `TASK_COMPLETED`, `VERIFICATION_STARTED` and `VERIFIED_COMPLETE` / `VERIFICATION_FAILED`.
+
+## Committing results
+
+Before committing a finished tier, compress each run's large raw files losslessly in place (about 2 MB → 60 KB per run):
+
+```bash
+find experiments/gpu/results -type f \( -name runtime.sqlite -o -name resource-samples.jsonl -o -name inference.log \) -exec gzip -9 {} +
+```
+
+Then regenerate `summary.md` and `runs.csv` with `python3 experiments/gpu/summarize.py experiments/gpu/results/<id>`. Files written by the container are root-owned; `docker exec bonfire-bench chown -R "$(id -u):$(id -g)" experiments/gpu/results` fixes that.
