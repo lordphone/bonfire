@@ -21,8 +21,9 @@ def validate_workload(workload):
     for step in workload["steps"]:
         if any(type(token) is not int for token in step["token_ids"]):
             raise ValueError("token IDs must use integer JSON values")
-        if "quantity" in step["args"] and type(step["args"]["quantity"]) is not int:
-            raise ValueError("quantity must use an integer JSON value")
+        for key in ("quantity", "level"):
+            if key in step["args"] and type(step["args"][key]) is not int:
+                raise ValueError(f"{key} must use an integer JSON value")
         if step["step_id"] in step_ids or step["op_id"] in op_ids:
             raise ValueError("step_id and op_id must be unique within a workload")
         step_ids.add(step["step_id"])
@@ -46,10 +47,17 @@ def load_workload(path):
     return workload
 
 
-def make_inventory_workload(task_id: str, *, seed: int = 33, steps: int = 5):
-    """Generate 5/10/20 mixed read/write steps; no model or learned policy."""
+def make_inventory_workload(task_id: str, *, seed: int = 33, steps: int = 5, tools: str = "inventory"):
+    """Generate 5/10/20 scripted steps; no model or learned policy.
+
+    ``tools="inventory"`` (default, unchanged) mixes reads and decrements.
+    ``tools="mixed"`` cycles read, decrement (non-idempotent) and
+    set_reorder_level (idempotent write), as the proposal's order tasks require.
+    """
     if type(seed) is not int or seed < 0 or type(steps) is not int or steps not in {5, 10, 20}:
         raise ValueError("nonnegative integer seed and steps in {5,10,20} required")
+    if tools not in {"inventory", "mixed"}:
+        raise ValueError("tools must be inventory or mixed")
     if not isinstance(task_id, str) or not task_id:
         raise ValueError("nonempty globally unique task_id required")
     rng = random.Random(seed)
@@ -58,7 +66,11 @@ def make_inventory_workload(task_id: str, *, seed: int = 33, steps: int = 5):
     for index in range(1, steps + 1):
         sku = rng.choice(list(totals))
         tool = "read_inventory" if index % 3 == 1 else "decrement_inventory"
+        if tools == "mixed" and index % 3 == 0:
+            tool = "set_reorder_level"
         args = {"sku": sku}
+        if tool == "set_reorder_level":
+            args["level"] = rng.randint(2, 9)
         if tool == "decrement_inventory":
             args["quantity"] = rng.randint(1, 3)
             totals[sku] += args["quantity"]
@@ -72,3 +84,18 @@ def make_inventory_workload(task_id: str, *, seed: int = 33, steps: int = 5):
                 "steps": trace}
     validate_workload(workload)
     return workload
+
+
+def with_external_step(workload, step_id):
+    """Copy of a workload whose decrement ``step_id`` becomes an unqueryable external call.
+
+    The same position then forms a should-resume case (C2 decrement) and a
+    should-abstain case (notify_supplier, no deduplication or outcome query).
+    """
+    changed = json.loads(json.dumps(workload))
+    step = next((s for s in changed["steps"] if s["step_id"] == step_id), None)
+    if step is None or step["tool_name"] != "decrement_inventory":
+        raise ValueError("only a decrement step can be replaced by an external call")
+    step["tool_name"], step["args"] = "notify_supplier", {"sku": step["args"]["sku"]}
+    validate_workload(changed)
+    return changed

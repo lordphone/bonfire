@@ -144,6 +144,102 @@
                 }
               }
             }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "step_id",
+              "op_id",
+              "token_ids",
+              "tool_name",
+              "args"
+            ],
+            "properties": {
+              "step_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "op_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "token_ids": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "tool_name": {
+                "const": "set_reorder_level"
+              },
+              "args": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sku",
+                  "level"
+                ],
+                "properties": {
+                  "sku": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "level": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "step_id",
+              "op_id",
+              "token_ids",
+              "tool_name",
+              "args"
+            ],
+            "properties": {
+              "step_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "op_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "token_ids": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "tool_name": {
+                "const": "notify_supplier"
+              },
+              "args": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sku"
+                ],
+                "properties": {
+                  "sku": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
           }
         ]
       }

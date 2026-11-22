@@ -74,6 +74,19 @@ class StateStore:
                     sku TEXT NOT NULL, quantity_delta INTEGER NOT NULL,
                     commit_receipt TEXT NOT NULL, committed_epoch INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS reorder_levels (
+                    task_id TEXT NOT NULL REFERENCES tasks(task_id),
+                    sku TEXT NOT NULL,
+                    level INTEGER NOT NULL CHECK(level >= 0),
+                    PRIMARY KEY(task_id, sku)
+                );
+                CREATE TABLE IF NOT EXISTS external_effects (
+                    effect_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_id TEXT NOT NULL, op_id TEXT NOT NULL,
+                    logical_step_id TEXT NOT NULL, execution_attempt TEXT NOT NULL,
+                    tool_name TEXT NOT NULL, fingerprint TEXT NOT NULL, result_json TEXT NOT NULL,
+                    commit_receipt TEXT NOT NULL, received_epoch INTEGER NOT NULL
+                );
             """)
         finally:
             connection.close()

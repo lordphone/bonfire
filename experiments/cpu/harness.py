@@ -20,21 +20,27 @@ from outcomeserve.telemetry.resources import ResourceMonitor
 from outcomeserve.tools.client import ToolClient
 from outcomeserve.verify import verify_workload
 from outcomeserve.verify.business import verify_business
-from workloads import make_inventory_workload
+from outcomeserve.verify.decisions import decision_metrics, expected_behavior, read_worker_events
+from workloads import make_inventory_workload, with_external_step
 from workloads.reset import reset_isolated_task
 
 
 METHODS = ("outcomeserve", "restart", "naive_retry", "transcript_checkpoint")
+# Which workload tool the faulted step uses. "external" turns that decrement into
+# the unqueryable notify_supplier call (a should-abstain case at ambiguous boundaries).
+FAULT_TOOLS = {"decrement": "decrement_inventory", "idempotent": "set_reorder_level", "external": "decrement_inventory"}
 
 
-def resolve_progress(workload, progress, *, boundary):
+def resolve_progress(workload, progress, *, boundary, fault_tool=None):
     if not 0 <= progress < 1:
         raise ValueError("progress must be in [0,1)")
     completed = int(len(workload["steps"]) * progress)
     index = max(0, completed - 1) if boundary == "POST_CONTEXT_COMMIT" else completed
-    # Tool windows require a write. Never silently claim the requested fraction.
-    while (boundary in {"PRE_DISPATCH", "POST_TOOL_COMMIT_PRE_RESULT_LOG", "DURING_RECOVERY"}
-           and index < len(workload["steps"]) and workload["steps"][index]["tool_name"] != "decrement_inventory"):
+    # Tool windows require a write (or the requested tool kind at every boundary).
+    # Never silently claim the requested fraction.
+    wanted = FAULT_TOOLS[fault_tool] if fault_tool else "decrement_inventory"
+    while ((fault_tool or boundary in {"PRE_DISPATCH", "POST_TOOL_COMMIT_PRE_RESULT_LOG", "DURING_RECOVERY"})
+           and index < len(workload["steps"]) and workload["steps"][index]["tool_name"] != wanted):
         index += 1
     if index == len(workload["steps"]):
         raise ValueError("no state-changing step at/after requested progress")
@@ -46,9 +52,13 @@ def resolve_progress(workload, progress, *, boundary):
 
 def run(output, *, method="outcomeserve", seed=33, steps=5, progress=0.2,
         boundary="POST_TOOL_COMMIT_PRE_RESULT_LOG", fault_domain="runner", purpose="correctness",
-        no_fault=False, interval=0.05):
+        no_fault=False, interval=0.05, fault_tool=None):
     if method not in METHODS or purpose not in {"correctness", "performance"}:
         raise ValueError("unsupported method/purpose")
+    if fault_tool is not None and (fault_tool not in FAULT_TOOLS or purpose != "correctness"):
+        raise ValueError("fault_tool selects a correctness case: decrement, idempotent or external")
+    if fault_tool == "external" and boundary == "DURING_RECOVERY":
+        raise ValueError("an external call has no reconciliation query to crash during")
     if fault_domain not in {"runner", "tool_response"}:
         raise ValueError("CPU experiment cannot simulate inference/GPU failure; use a real serving pilot")
     if boundary not in {"DURING_GENERATION", "PRE_DISPATCH", "POST_TOOL_COMMIT_PRE_RESULT_LOG", "POST_CONTEXT_COMMIT", "DURING_RECOVERY"} or (fault_domain == "tool_response" and boundary != "POST_TOOL_COMMIT_PRE_RESULT_LOG"):
@@ -58,13 +68,17 @@ def run(output, *, method="outcomeserve", seed=33, steps=5, progress=0.2,
     if purpose == "performance" and method not in {"outcomeserve", "restart"}:
         raise ValueError("performance main comparison is restart versus OutcomeServe")
     output = Path(output).resolve()
-    workload = make_inventory_workload(f"cpu-{method}-s{seed}-n{steps}", seed=seed, steps=steps)
-    position = resolve_progress(workload, progress, boundary=boundary)
+    task_id = f"cpu-{method}-s{seed}-n{steps}" + (f"-{fault_tool}" if fault_tool else "")
+    workload = make_inventory_workload(task_id, seed=seed, steps=steps, tools="mixed" if fault_tool else "inventory")
+    position = resolve_progress(workload, progress, boundary=boundary, fault_tool=fault_tool)
+    if fault_tool == "external":
+        workload = with_external_step(workload, workload["steps"][position["fault_step"] - 1]["step_id"])
     output.mkdir(parents=True, exist_ok=False)
     save(output / "workload.json", workload)
     configuration = {"backend": "scripted_cpu", "purpose": purpose, "method": method,
                      "steps": steps, "fault_domain": fault_domain, "boundary": boundary,
                      "no_fault": no_fault, "sampling_interval": interval,
+                     **({"fault_tool": fault_tool, "tools": "mixed"} if fault_tool else {}),
                      "context_spec_id": context_spec_id(scripted_context(workload["model_revision"])),
                      "environment_lock_sha256": hashlib.sha256((ROOT / 'infra/environment.lock.json').read_bytes()).hexdigest(), **position}
     config_id = hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest()
@@ -102,7 +116,8 @@ def run(output, *, method="outcomeserve", seed=33, steps=5, progress=0.2,
               "hardware_id": socket.gethostname(),
               "business_fixture_sha256": hashlib.sha256(json.dumps({"inventory": workload["initial_inventory"],
                   "requests": [{key: step[key] for key in ("tool_name", "args")} for step in workload["steps"]]}, sort_keys=True).encode()).hexdigest(),
-              "seed": seed, "pair_key": f"s{seed}:n{steps}:{progress}:{boundary}:{fault_domain}:{purpose}:{no_fault}",
+              "seed": seed, "pair_key": f"s{seed}:n{steps}:{progress}:{boundary}:{fault_domain}:{purpose}:{no_fault}"
+                          + (f":{fault_tool}" if fault_tool else ""),
               "valid": False, "passed": False, "invalid_reasons": [], "fault_applied": False}
     try:
         with (output / "tool.stderr.txt").open("w") as errors:
@@ -154,6 +169,8 @@ def run(output, *, method="outcomeserve", seed=33, steps=5, progress=0.2,
             connection = store.connect()
             try:
                 committed_count = connection.execute("SELECT count(*) FROM operations WHERE task_id=?", (workload["task_id"],)).fetchone()[0]
+                committed_count += connection.execute("SELECT count(DISTINCT logical_step_id) FROM external_effects WHERE task_id=?",
+                                                      (workload["task_id"],)).fetchone()[0]
                 expected_count = position["completed_steps_before_active"] + int(boundary in {"POST_TOOL_COMMIT_PRE_RESULT_LOG", "POST_CONTEXT_COMMIT"})
                 if committed_count != expected_count:
                     raise RuntimeError("durable operation count does not match requested boundary")
@@ -227,8 +244,17 @@ def run(output, *, method="outcomeserve", seed=33, steps=5, progress=0.2,
                       runner_replaced=report["fault_applied"] and fault_domain == "runner")
         measures.emit("VERIFICATION_STARTED")
         business = verify_business(database, workload)
-        protocol = verify_workload(database, workload) if method == "outcomeserve" else None
+        expected = expected_behavior(fault_tool or "decrement", boundary, fault_domain) if not no_fault else "complete"
+        checkpoint = "halted" if method == "outcomeserve" and runner.returncode == 3 else "completed"
+        protocol = verify_workload(database, workload, checkpoint=checkpoint) if method == "outcomeserve" else None
         passed = runner.returncode == 0 and business["task_success"] and (protocol is None or protocol["task_success"])
+        events = read_worker_events(output / "worker-events.jsonl")
+        abstained = next((e["step_id"] for e in events if e["event_type"] == "RECOVERY_ABSTAIN"), None)
+        decisions = decision_metrics(events, workload, business, expected=expected,
+                                     runner_exit_code=runner.returncode, abstained_step=abstained)
+        if protocol is not None and not protocol["consistency_pass"]:
+            decisions["correct"] = False
+        report.update(decisions=decisions, correct=decisions["correct"], expected_behavior=expected)
         verified_stop = measures.emit("VERIFIED_COMPLETE" if passed else "VERIFICATION_FAILED")
         save(output / "verification.json", {"business": business, "protocol": protocol})
         report.update(passed=passed, metrics=business["metrics"], task_success=passed,

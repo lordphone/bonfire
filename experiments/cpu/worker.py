@@ -10,6 +10,7 @@ from outcomeserve.context import scripted_context
 from outcomeserve.contracts import request_fingerprint
 from outcomeserve.log import DurableLog
 from outcomeserve.storage import StateStore
+from outcomeserve.tools import tool_capabilities
 from outcomeserve.tools.client import ToolClient, AcknowledgmentLost
 from workloads import load_workload
 
@@ -40,6 +41,11 @@ def run(args):
         elif args.method == "transcript_checkpoint" and checkpoint.exists():
             start = json.loads(checkpoint.read_text())["next_index"]
     records = log.read(task) if args.method == "outcomeserve" else []
+    # A durably abstained task stays halted: no tool call, no new record.
+    halted = next((r for r in records if r["record_type"] == "RECOVERY_ABSTAIN"), None)
+    if halted is not None:
+        emit("RECOVERY_HALTED", halted)
+        return 3
     for index, step in enumerate(workload["steps"]):
         if index < start:
             continue
@@ -68,10 +74,15 @@ def run(args):
         if target and (args.boundary == "PRE_DISPATCH" or args.boundary == "DURING_RECOVERY" and args.epoch == 1):
             pause(step, "PRE_DISPATCH")
         query = {key: value for key, value in request.items() if key not in {"tool_name", "args"}}
+        # An external call has no outcome query: an ambiguous outcome stays UNKNOWN.
+        queryable = tool_capabilities(step["tool_name"])["supports_outcome_query"]
+        unknown = {"status": "UNKNOWN", "reason": "tool does not support outcome query"}
+        def reconcile():
+            return tools.query(query) if queryable else dict(unknown)
         response = None
         if args.method == "outcomeserve" and step_records:
             emit("RECONCILIATION_STARTED", step)
-            response = tools.query(query)
+            response = reconcile()
             emit("RECONCILIATION_FINISHED", step, outcome=response["status"])
             if target and args.boundary == "DURING_RECOVERY":
                 pause(step, "DURING_RECOVERY")
@@ -81,15 +92,20 @@ def run(args):
                 call += 1
                 try:
                     emit("TOOL_SUBMIT", step)
-                    response = tools.submit(request, pause=target and call == 1 and args.boundary == "POST_TOOL_COMMIT_PRE_RESULT_LOG",
-                        logical_step_id=step["step_id"] if args.method != "outcomeserve" else None,
-                        attempt=f"{args.epoch}-{call}")
+                    pause_after = target and call == 1 and args.boundary == "POST_TOOL_COMMIT_PRE_RESULT_LOG"
+                    if queryable:
+                        response = tools.submit(request, pause=pause_after,
+                            logical_step_id=step["step_id"] if args.method != "outcomeserve" else None,
+                            attempt=f"{args.epoch}-{call}")
+                    else:
+                        response = tools.submit_external(request, pause=pause_after, logical_step_id=step["step_id"],
+                                                         attempt=f"{args.epoch}-{call}")
                     break
                 except AcknowledgmentLost:
                     emit("ACKNOWLEDGMENT_LOST", step)
                     target = False
                     if args.method == "outcomeserve":
-                        response = tools.query(query)
+                        response = reconcile()
                         emit("RECONCILIATION_FINISHED", step, outcome=response["status"])
                         break
                     if call >= 2:
@@ -102,6 +118,7 @@ def run(args):
                 answer = log.append(task, body["record_id"], len(records), args.epoch, body)
                 if answer["status"] not in {"APPENDED", "ALREADY_APPENDED"}:
                     raise RuntimeError(f"RECOVERY_ABSTAIN was not persisted: {answer}")
+                emit("RECOVERY_ABSTAIN", step, reason=body["payload"]["reason"])
                 return 3
             raise RuntimeError(f"tool returned {response['status']}")
         if args.method == "outcomeserve":

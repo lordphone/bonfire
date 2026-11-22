@@ -31,6 +31,12 @@ class ToolClient:
             envelope.update(logical_step_id=logical_step_id, execution_attempt=attempt)
         return self.post("/submit", envelope)
 
+    def submit_external(self, request, *, pause=False, logical_step_id=None, attempt=None):
+        """Unqueryable external API: a lost acknowledgment leaves the outcome UNKNOWN."""
+        envelope = {"request": request, "pause_after_commit": pause, "logical_step_id": logical_step_id,
+                    "execution_attempt": attempt}
+        return self.post("/external/submit", envelope)
+
     def query(self, request):
         try:
             return self.post("/query", {"request": request})

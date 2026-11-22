@@ -25,9 +25,15 @@ def _fingerprint(step):
     }).encode("utf-8")).hexdigest()
 
 
-def _business_oracle(inventory, step):
-    """Pure reference semantics; mutates only an in-memory reference state."""
+def _business_oracle(inventory, step, reorder=None):
+    """Pure reference semantics; mutates only an in-memory reference state.
+
+    ``reorder`` (optional) receives the reorder level set by set_reorder_level.
+    notify_supplier is an external call: it never reads or changes inventory.
+    """
     sku = step["args"]["sku"]
+    if step["tool_name"] == "notify_supplier":
+        return {"ok": True, "sku": sku, "notified": True}
     if sku not in inventory:
         return {"ok": False, "error": "SKU_NOT_FOUND", "sku": sku}
     count = inventory[sku]
@@ -36,7 +42,18 @@ def _business_oracle(inventory, step):
         if amount > count:
             return {"ok": False, "error": "INSUFFICIENT_INVENTORY", "sku": sku, "remaining": count}
         inventory[sku] = count - amount
+    if step["tool_name"] == "set_reorder_level":
+        if reorder is not None:
+            reorder[sku] = step["args"]["level"]
+        return {"ok": True, "sku": sku, "reorder_level": step["args"]["level"]}
     return {"ok": True, "sku": sku, "remaining": inventory[sku]}
+
+
+def _optional_rows(connection, table, task_id, order="rowid"):
+    """Rows of a table added after 1.1.0 databases; an older database simply has none."""
+    if not connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+        return []
+    return [dict(row) for row in connection.execute(f"SELECT * FROM {table} WHERE task_id=? ORDER BY {order}", (task_id,))]
 
 
 def _decode_json(text):
@@ -78,6 +95,14 @@ def _snapshot(database, task_id):
         )]
         for operation in operations:
             operation["result"] = _decode_json(operation["result_json"])
+        # External calls have no C2 operation row; their acknowledgments are the
+        # evidence a runner could log, one per accepted submission.
+        for effect in _optional_rows(connection, "external_effects", task_id, "effect_id"):
+            operations.append({"task_id": task_id, "op_id": effect["op_id"], "step_id": effect["logical_step_id"],
+                               "fingerprint": effect["fingerprint"], "result": _decode_json(effect["result_json"]),
+                               "commit_receipt": effect["commit_receipt"], "committed_epoch": effect["received_epoch"],
+                               "external": True})
+        task["reorder_levels"] = {row["sku"]: row["level"] for row in _optional_rows(connection, "reorder_levels", task_id)}
         for row in rows:
             row["record"] = _decode_json(row["record_json"])
         return task, inventory, operations, rows
@@ -113,9 +138,13 @@ def verify_workload(database, workload, *, checkpoint="completed"):
     trace = workload["steps"]
     steps = {step["step_id"]: step for step in trace}
     ordered_ids = [step["step_id"] for step in trace]
-    expected_all = dict(workload["initial_inventory"])
-    expected_results = {step["step_id"]: _business_oracle(expected_all, step) for step in trace}
-    expected_inventory = dict(workload["initial_inventory"])
+    expected_all, expected_all_reorder = dict(workload["initial_inventory"]), {}
+    expected_results = {step["step_id"]: _business_oracle(expected_all, step, expected_all_reorder) for step in trace}
+    expected_inventory, expected_reorder = dict(workload["initial_inventory"]), {}
+    if any(op.get("external") for op in operations):
+        # C2 and external evidence live in different tables; compare them in workload order.
+        position = {step_id: index for index, step_id in enumerate(ordered_ids)}
+        operations.sort(key=lambda op: position.get(op["step_id"], len(position)))
     op_counts = Counter(op["step_id"] for op in operations)
     duplicates = sum(max(0, count - 1) for count in op_counts.values())
     if duplicates:
@@ -137,7 +166,11 @@ def verify_workload(database, workload, *, checkpoint="completed"):
             issue("TOOL_EVIDENCE", "invalid receipt or commit epoch", step_id)
         if _json(op["result"]) != _json(expected_results[step_id]):
             issue("TOOL_RESULT", "stored result differs from independent business oracle", step_id)
-        _business_oracle(expected_inventory, step)
+        _business_oracle(expected_inventory, step, expected_reorder)
+    reorder_mismatches = sum(task["reorder_levels"].get(sku) != expected_reorder.get(sku)
+                             for sku in set(task["reorder_levels"]) | set(expected_reorder))
+    if reorder_mismatches:
+        issue("REORDER_STATE", "reorder levels differ from committed-operation reference state")
     inventory_mismatches = sum(
         inventory.get(sku) != expected_inventory.get(sku)
         for sku in set(inventory) | set(expected_inventory)
@@ -229,12 +262,14 @@ def verify_workload(database, workload, *, checkpoint="completed"):
     report.update(
         consistency_pass=not issues,
         task_success=not issues and completed == ordered_ids and not halted
-                     and inventory == expected_all and all(result["ok"] for result in expected_results.values()),
+                     and inventory == expected_all and task["reorder_levels"] == expected_all_reorder
+                     and all(result["ok"] for result in expected_results.values()),
         observed_state="halted" if halted else "completed" if completed == ordered_ids else "in_progress",
         expected_final_inventory=expected_all, observed_inventory=inventory,
         metrics={
             "completed_steps": len(completed), "committed_operations": len(operations),
             "duplicate_operation_records": duplicates, "inventory_mismatches": inventory_mismatches,
+            "reorder_mismatches": reorder_mismatches,
             "tool_state_mismatches": sum(i["code"] in {"TOOL_RESULT", "LOG_TOOL_MISMATCH"} for i in issues),
             "pending_operations": unreconciled if checkpoint != "completed" else 0,
             "orphan_operations": unreconciled if checkpoint == "completed" else 0,
