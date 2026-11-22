@@ -40,7 +40,7 @@ def main(root: Path):
         writer.writerows(rows)
     md = [f"# GPU matrix: `{root.name}`", "", f"{len(rows)} runs; per-run data in `runs.csv`. Times in seconds, medians.", "",
           "| Tier | Cell | Pairs | Invalid / failed | Restart fault→verified | OutcomeServe fault→verified | Paired S (restart − OS) | "
-          "Restart task | OutcomeServe task | Paired H (OS − restart) | OS fault→first token |",
+          "Restart task | OutcomeServe task | Paired task OS − restart (H if fault-free) | OS fault→first token |",
           "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     cells = sorted({(r["tier"], r["cell"]) for r in rows}, key=lambda c: (c[0], c[1]))
     for tier, cell in cells:
