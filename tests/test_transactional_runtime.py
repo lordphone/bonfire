@@ -210,6 +210,18 @@ def test_context_commit_and_reopen_keep_prefix_consistent(store):
     assert len(reopened.read("task", after_sequence=1)) == 2
 
 
+def test_stored_log_records_cannot_be_rewritten(store):
+    # validate_log trusts persisted records, so the table must stay append-only.
+    assert append(DurableLog(store), body(), 0)["status"] == "APPENDED"
+    connection = sqlite3.connect(store.path)
+    try:
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            connection.execute("UPDATE log_records SET record_json='{}' WHERE task_id='task'")
+    finally:
+        connection.close()
+    assert DurableLog(StateStore(store.path)).read("task")[0]["record_id"] == body()["record_id"]
+
+
 def test_append_retry_conflict_and_invalid_transition_do_not_change_tail(store):
     log = DurableLog(store)
     prepared = body()

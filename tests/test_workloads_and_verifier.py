@@ -149,6 +149,7 @@ def test_corrupt_operation_result_cannot_be_hidden_by_matching_log(completed):
         row = conn.execute("SELECT * FROM log_records WHERE sequence=2").fetchone()
         record = json.loads(row["record_json"])
         record["payload"]["result"] = forged
+        conn.execute("DROP TRIGGER log_records_append_only")  # tampering from outside the runtime
         conn.execute("UPDATE log_records SET record_json=? WHERE sequence=2", (json.dumps(record),))
     report = verify_workload(store.path, workload)
     assert "TOOL_RESULT" in codes(report)
@@ -180,6 +181,7 @@ def test_verifier_rejects_corrupt_persistent_evidence(completed, corruption, cod
             if corruption == "fingerprint": record["payload"]["request_fingerprint"] = "sha256:" + "0" * 64
             if corruption == "result_ref": record["payload"]["result_record_id"] = "other"
             if corruption == "log_schema": del record["payload"]["tool_name"]
+            conn.execute("DROP TRIGGER log_records_append_only")  # tampering from outside the runtime
             conn.execute("UPDATE log_records SET record_json=? WHERE sequence=?", (json.dumps(record), sequence))
     report = verify_workload(store.path, workload)
     assert code in codes(report)

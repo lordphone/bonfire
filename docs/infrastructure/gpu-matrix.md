@@ -55,6 +55,14 @@ All events in a run share one `clock_id` (the supervisor passes it to the runner
 
 `FIRST_NEW_TOKEN` is observed on the client stream, so it includes one decode step; a prefill/decode split would need serving-side timing.
 
+### H depends on the log validation policy
+
+H (and every OutcomeServe time) is measured with this runtime policy: each `DurableLog` append or commit schema-checks only the records it is about to insert. Stored records are trusted, because they were checked before insert and `log_records` is append-only. A SQLite trigger rejects `UPDATE`, and the only `DELETE` is the restart baseline's reset, which empties the whole task log. Cross-record invariants (sequence, transitions, epochs, references) still run on the full log every time.
+
+Before this policy, the runtime re-validated every stored record on each write. Each record carries a full token prefix, so at 8K that cost about 0.9 s per step by step 20, and the fault-free task took 35 s instead of 18 s. That pilot is kept in `pilot-v0` to show the old cost.
+
+The runtime trusts stored records, so the independent verifier must not. After a batch, `experiments/gpu/verify_logs.py` reruns `verify_workload` (model-mode, `token_source="model"`) on every OutcomeServe run's `runtime.sqlite`. It schema-checks every stored record and requires each prompt to extend the durable committed prefix, so it also checks the replay after the fault. It writes `log-verification.json`.
+
 ## Runner event contract
 
 The runner writes measurement-event 1.1.0 records (`schemas/measurement-event.schema.json`) to `runner-events.jsonl`, with `run_id`, `configuration_id` and `clock_id` from the supervisor. Every event's `details` carries `epoch` and `step_id`. Later attempts append to the same file and continue its sequence.
