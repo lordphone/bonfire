@@ -1,4 +1,4 @@
-"""RQ3 cost model v1: predict recovery time and the one-fault saving S from component costs.
+"""RQ3 cost model: predict recovery time and the one-fault saving S from component costs.
 
 Owner: Shirley · Reviewers: Victoria / Lordphone
 
@@ -8,14 +8,22 @@ explains them: it calibrates per-component costs from standalone experiments
 the planned 2K/8K/16K x 10/50/90% matrix, and reports prediction error so the
 model's claims stay checkable against retained evidence.
 
+v2 adds the durable-logging cost as a function of the committed prefix, and
+charges OutcomeServe that cost on every step it still runs after the fault; v1
+let the remaining steps cancel, which the 480-run RTX 5090 matrix showed was
+wrong (OutcomeServe loses at 10% progress). validate_on_matrix checks v1 and v2
+against that matrix.
+
 Units are seconds and tokens. Scope matches the plan: one GPU, process restart,
 at most one fault per task, no warm replica and no decode checkpoint.
 """
 
 from __future__ import annotations
 
+import csv
 import json
 import tempfile
+from collections import defaultdict
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -214,6 +222,20 @@ class TaskShape:
                    step_prompt=step_prompt, generated=round(median(generated)), tool_result=round(median(results)),
                    tool_seconds=tool_seconds)
 
+    @classmethod
+    def from_matrix(cls, rows: list[dict], *, generated: int = 30, tool_result: int = 19) -> "TaskShape":
+        """Per-step token growth from matrix runs (initial and final prefix of complete runs).
+
+        The matrix records only the total growth, so the split between step prompt,
+        generated call and tool result is assumed; only `generated` affects decode time.
+        """
+        growth = [(int(r["final_prefix_tokens"]) - int(r["initial_prefix_tokens"])) / 20 for r in rows
+                  if r.get("final_prefix_tokens") and r.get("initial_prefix_tokens")]
+        if not growth:
+            raise ValueError("no run records both initial and final prefix")
+        per_step = round(median(growth))
+        return cls(steps=20, step_prompt=per_step - generated - tool_result, generated=generated, tool_result=tool_result)
+
     def prefix_after(self, completed: int) -> int:
         return self.initial_prefix + completed * (self.step_prompt + self.generated + self.tool_result)
 
@@ -229,13 +251,50 @@ def step_seconds(cal: Calibration, task: TaskShape, index: int, *, apc: bool) ->
     return prefill + cal.decode(task.generated, prompt) + task.tool_seconds
 
 
+@dataclass(frozen=True)
+class LoggingCost:
+    """Durable prepare + commit per step: base + per_token x committed prefix after the step.
+
+    Each CONTEXT_COMMITTED stores the full token prefix, so the cost grows with it.
+    """
+
+    base: float
+    per_token: float = 0.0
+
+    def step(self, committed_prefix: int) -> float:
+        return self.base + self.per_token * committed_prefix
+
+    def steps(self, task: "TaskShape", first: int, last: int) -> float:
+        """Cost of steps first..last-1 (0-based)."""
+        return sum(self.step(task.prefix_after(i + 1)) for i in range(first, last))
+
+    def task_seconds(self, task: "TaskShape") -> float:
+        return self.steps(task, 0, task.steps)
+
+
+def fit_logging_cost(h_by_prefix: dict[int, float], shape: "TaskShape") -> LoggingCost:
+    """Fit base and per_token to whole-task fault-free overheads H measured at several initial prefixes."""
+    rows, targets = [], []
+    for prefix, overhead in sorted(h_by_prefix.items()):
+        task = TaskShape(steps=shape.steps, initial_prefix=prefix, step_prompt=shape.step_prompt,
+                         generated=shape.generated, tool_result=shape.tool_result)
+        rows.append([task.steps, sum(task.prefix_after(i + 1) for i in range(task.steps))])
+        targets.append(overhead)
+    if len(rows) < 2:
+        raise ValueError("need H at two or more prefixes")
+    base, per_token = _least_squares(rows, targets)
+    return LoggingCost(base, per_token)
+
+
 def one_fault_saving(cal: Calibration, fixed: FixedCosts, task: TaskShape, *, progress: float, domain: str,
-                     apc: bool, restart_reset_seconds: float = 0.0) -> dict:
+                     apc: bool, restart_reset_seconds: float = 0.0, logging: LoggingCost | None = None) -> dict:
     """S = T_restart,one-fault - T_OutcomeServe,one-fault for a fault during step k+1.
 
-    Both methods pay detection, teardown, process start and the remaining steps;
-    those cancel. Restart redoes the k completed steps and resets tool state;
-    OutcomeServe reconciles and replays the committed prefix once instead.
+    Both methods pay detection, teardown, process start and the remaining
+    generation; those cancel. Restart redoes the k completed steps and resets
+    tool state; OutcomeServe reconciles and replays the committed prefix once
+    instead, and (v2) keeps paying durable logging on steps k+1..N, which the
+    restart baseline does not. With logging=None this is the v1 model.
     """
     if not 0 <= progress < 1:
         raise ValueError("progress must be in [0, 1)")
@@ -245,8 +304,10 @@ def one_fault_saving(cal: Calibration, fixed: FixedCosts, task: TaskShape, *, pr
     resume = replay["components"]["reconcile"] + replay["components"]["replay_prefill"]
     # After a restart, step k+1 sees a history that restart rebuilt itself; after a
     # resume, its history was just replayed. Either way it is warm, so it cancels.
+    after_fault = logging.steps(task, completed, task.steps) if logging else 0.0
     return {"completed_steps": completed, "restart_redo_s": redo, "restart_reset_s": restart_reset_seconds,
-            "outcomeserve_resume_s": resume, "S": redo + restart_reset_seconds - resume}
+            "outcomeserve_resume_s": resume, "outcomeserve_logging_after_fault_s": after_fault,
+            "S": redo + restart_reset_seconds - resume - after_fault}
 
 
 def measure_log_overhead(steps: int = 20, repeats: int = 5) -> dict:
@@ -300,19 +361,104 @@ def measure_log_overhead(steps: int = 20, repeats: int = 5) -> dict:
             "note": "host-specific SQLite WAL/FULL fsync cost; rerun on the GPU host for reported H"}
 
 
-def matrix_predictions(cal: Calibration, fixed: FixedCosts, *, log_per_step: float, domain: str = "inference",
-                       apc: bool = False, prefixes=(2048, 8192, 16384), progresses=(0.1, 0.5, 0.9),
-                       steps: int = 20) -> list[dict]:
-    """Predicted S, H and break-even q for each planned matrix cell."""
+def matrix_predictions(cal: Calibration, fixed: FixedCosts, *, logging: LoggingCost | float,
+                       domain: str = "inference", apc: bool = False, prefixes=(2048, 8192, 16384),
+                       progresses=(0.1, 0.5, 0.9), shape: TaskShape | None = None) -> list[dict]:
+    """Predicted S, H and break-even q for each planned matrix cell.
+
+    A float `logging` is v1: a constant per-step cost that only enters H.
+    """
+    shape = shape or TaskShape()
+    v1 = not isinstance(logging, LoggingCost)
+    cost = LoggingCost(float(logging)) if v1 else logging
     cells = []
     for prefix in prefixes:
-        task = TaskShape(steps=steps, initial_prefix=prefix)
-        overhead = steps * log_per_step
+        task = TaskShape(steps=shape.steps, initial_prefix=prefix, step_prompt=shape.step_prompt,
+                         generated=shape.generated, tool_result=shape.tool_result, tool_seconds=shape.tool_seconds)
+        overhead = cost.task_seconds(task)
         for progress in progresses:
-            saving = one_fault_saving(cal, fixed, task, progress=progress, domain=domain, apc=apc)
+            saving = one_fault_saving(cal, fixed, task, progress=progress, domain=domain, apc=apc,
+                                      logging=None if v1 else cost)
             curve = break_even_curve(overhead, saving["S"]) if saving["S"] > 0 else None
             cells.append({"initial_prefix": prefix, "progress": progress, "domain": domain, "apc": apc,
                           **saving, "H": overhead,
                           "break_even_q": curve["break_even_q"] if curve else None})
     return cells
 
+
+# ------------------------------------------------------------------ check against the GPU matrix
+
+
+def matrix_measurements(runs_csv: Path) -> dict:
+    """Mean paired S (fault -> verified) and H (fault-free task) per cell from a matrix runs.csv."""
+    with open(runs_csv, newline="", encoding="utf-8") as stream:
+        rows = list(csv.DictReader(stream))
+    pairs = defaultdict(dict)
+    for row in rows:
+        if row["valid"] == "True" and row["passed"] == "True":
+            pairs[row["cell"]].setdefault(row["seed"], {})[row["method"]] = row
+    cells = {}
+    for cell, seeds in pairs.items():
+        complete = [m for m in seeds.values() if set(m) == {"restart", "outcomeserve"}]
+        if "nofault" in cell:
+            diffs = [float(m["outcomeserve"]["task_to_verified_seconds"]) - float(m["restart"]["task_to_verified_seconds"])
+                     for m in complete]
+        else:
+            diffs = [float(m["restart"]["fault_to_verified_seconds"]) - float(m["outcomeserve"]["fault_to_verified_seconds"])
+                     for m in complete]
+        first_token = [float(m["outcomeserve"]["fault_to_first_new_token_seconds"]) for m in complete
+                       if m["outcomeserve"].get("fault_to_first_new_token_seconds")]
+        cells[cell] = {"pairs": len(diffs), "mean": sum(diffs) / len(diffs) if diffs else None,
+                       "outcomeserve_fault_to_first_token_median": median(first_token) if first_token else None}
+    return {"rows": rows, "cells": cells}
+
+
+def _cell(prefix: int, progress: float | None) -> str:
+    return f"p{prefix // 1024}k-" + ("nofault" if progress is None else f"f{round(progress * 100)}")
+
+
+def validate_on_matrix(spike: Path, runs_csv: Path) -> dict:
+    """Predict the measured matrix from spike calibration plus the fault-free H cells.
+
+    The one-fault cells are out of sample for both versions: v1 uses only spike
+    calibration; v2 adds a logging cost fitted to the separate fault-free (1H)
+    runs. H itself is checked leave-one-prefix-out.
+    """
+    cal = calibrate_from_spike(spike)
+    cells = json.loads((Path(spike) / "recovery.json").read_text(encoding="utf-8"))
+    inference_fixed = fixed_costs_from_cell(next(rows for name, rows in cells.items() if name.startswith("Inference kill")))
+    measured = matrix_measurements(runs_csv)
+    shape = TaskShape.from_matrix([r for r in measured["rows"] if r["method"] == "outcomeserve"])
+    prefixes = (2048, 8192, 16384)
+    h = {p: measured["cells"][_cell(p, None)]["mean"] for p in prefixes}
+    logging = fit_logging_cost(h, shape)
+
+    def task(prefix):
+        return TaskShape(steps=shape.steps, initial_prefix=prefix, step_prompt=shape.step_prompt,
+                         generated=shape.generated, tool_result=shape.tool_result)
+
+    h_check = []
+    for held in prefixes:
+        fitted = fit_logging_cost({p: v for p, v in h.items() if p != held}, shape)
+        h_check.append({"prefix": held, "measured_H": h[held], "predicted_H": fitted.task_seconds(task(held)),
+                        "basis": "leave this prefix out"})
+
+    s_check = []
+    for prefix in prefixes:
+        for progress in (0.1, 0.5, 0.9):
+            cell = measured["cells"][_cell(prefix, progress)]
+            v1 = one_fault_saving(cal, inference_fixed, task(prefix), progress=progress, domain="inference", apc=False)
+            v2 = one_fault_saving(cal, inference_fixed, task(prefix), progress=progress, domain="inference", apc=False,
+                                  logging=logging)
+            replay = recovery_seconds(cal, inference_fixed, domain="inference",
+                                      prefix_tokens=task(prefix).prefix_after(v2["completed_steps"]), apc=False)
+            s_check.append({"cell": _cell(prefix, progress), "pairs": cell["pairs"], "measured_S": cell["mean"],
+                            "v1_S": v1["S"], "v2_S": v2["S"], "v2_logging_after_fault": v2["outcomeserve_logging_after_fault_s"],
+                            "measured_first_token": cell["outcomeserve_fault_to_first_token_median"],
+                            "predicted_first_token": replay["total"] - replay["components"]["detect"]
+                            - replay["components"]["teardown"]})
+    mae = lambda key: sum(abs(c[key] - c["measured_S"]) for c in s_check) / len(s_check)
+    return {"task_shape": shape.__dict__, "logging_cost": asdict(logging), "H": h_check, "S": s_check,
+            "mean_abs_error_s": {"v1": mae("v1_S"), "v2": mae("v2_S")},
+            "notes": "first-token prediction excludes detect/teardown: the matrix supervisor kills on its barrier, "
+                     "so FAULT_APPLIED -> FIRST_NEW_TOKEN starts at the kill"}
