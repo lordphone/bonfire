@@ -1,0 +1,150 @@
+{
+  "schema_version": "1.0.0",
+  "sampling_interval_seconds": 0.2,
+  "clock_source": "perf_counter",
+  "clock_resolution_seconds": 1e-09,
+  "window_start_ns": 15452326986575,
+  "window_stop_ns": 15504241609295,
+  "sample_count": 260,
+  "process_cpu_seconds": 56.03,
+  "peak_summed_rss_bytes": 4605476864,
+  "peak_gpu_memory_bytes": 30581063680,
+  "gpu_allocation_seconds": 51.91462272,
+  "gpu_error": null,
+  "unsampled_pids": [],
+  "last_process_samples": [
+    {
+      "pid": 108302,
+      "identity": "108302:1545241",
+      "cpu_seconds": 0.14,
+      "rss_bytes": 29847552,
+      "role": "tool_service"
+    },
+    {
+      "pid": 108305,
+      "identity": "108305:1545246",
+      "cpu_seconds": 6.93,
+      "rss_bytes": 1396158464,
+      "role": "inference-1"
+    },
+    {
+      "pid": 108346,
+      "identity": "108346:1545705",
+      "cpu_seconds": 0.01,
+      "rss_bytes": 12566528,
+      "role": "inference-1"
+    },
+    {
+      "pid": 108347,
+      "identity": "108347:1545705",
+      "cpu_seconds": 16.37,
+      "rss_bytes": 0,
+      "role": "inference-1"
+    },
+    {
+      "pid": 108369,
+      "identity": "108369:1546112",
+      "cpu_seconds": 1.78,
+      "rss_bytes": 0,
+      "role": "inference-1"
+    },
+    {
+      "pid": 108371,
+      "identity": "108371:1546114",
+      "cpu_seconds": 1.73,
+      "rss_bytes": 698109952,
+      "role": "inference-1"
+    },
+    {
+      "pid": 108433,
+      "identity": "108433:1546194",
+      "cpu_seconds": 0.97,
+      "rss_bytes": 20107264,
+      "role": "inference-1"
+    },
+    {
+      "pid": 108440,
+      "identity": "108440:1546198",
+      "cpu_seconds": 0.0,
+      "rss_bytes": 19931136,
+      "role": "inference-1"
+    },
+    {
+      "pid": 108487,
+      "identity": "108487:1547211",
+      "cpu_seconds": 0.11,
+      "rss_bytes": 31043584,
+      "role": "runner-1"
+    },
+    {
+      "pid": 108563,
+      "identity": "108563:1547805",
+      "cpu_seconds": 0.16,
+      "rss_bytes": 31399936,
+      "role": "runner-2"
+    },
+    {
+      "pid": 108564,
+      "identity": "108564:1547805",
+      "cpu_seconds": 7.0,
+      "rss_bytes": 1389391872,
+      "role": "inference-2"
+    },
+    {
+      "pid": 108605,
+      "identity": "108605:1548268",
+      "cpu_seconds": 0.01,
+      "rss_bytes": 12689408,
+      "role": "inference-2"
+    },
+    {
+      "pid": 108606,
+      "identity": "108606:1548268",
+      "cpu_seconds": 16.49,
+      "rss_bytes": 2818940928,
+      "role": "inference-2"
+    },
+    {
+      "pid": 108628,
+      "identity": "108628:1548676",
+      "cpu_seconds": 1.7,
+      "rss_bytes": 686469120,
+      "role": "inference-2"
+    },
+    {
+      "pid": 108630,
+      "identity": "108630:1548678",
+      "cpu_seconds": 1.69,
+      "rss_bytes": 686342144,
+      "role": "inference-2"
+    },
+    {
+      "pid": 108692,
+      "identity": "108692:1548755",
+      "cpu_seconds": 0.94,
+      "rss_bytes": 19644416,
+      "role": "inference-2"
+    },
+    {
+      "pid": 108699,
+      "identity": "108699:1548758",
+      "cpu_seconds": 0.0,
+      "rss_bytes": 19898368,
+      "role": "inference-2"
+    }
+  ],
+  "gpu_identity": [
+    {
+      "index": 0,
+      "name": "NVIDIA GeForce RTX 5090",
+      "uuid": "GPU-673894ba-fd05-18da-27c6-10391d4cc209",
+      "driver": "580.178.04"
+    }
+  ],
+  "measurement_valid": true,
+  "limitations": [
+    "last samples may miss CPU before abrupt exit",
+    "summed RSS may double-count shared pages",
+    "allocation-seconds are reserved time, not active GPU cycles"
+  ]
+}

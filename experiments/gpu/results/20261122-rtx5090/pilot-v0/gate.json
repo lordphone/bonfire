@@ -1,0 +1,6 @@
+{
+  "all_passed": true,
+  "zero_duplicates": true,
+  "fault_prefix_equals_fault_free": true,
+  "gate_passed": true
+}

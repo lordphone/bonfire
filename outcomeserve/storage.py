@@ -57,6 +57,12 @@ class StateStore:
                     PRIMARY KEY(task_id, sequence),
                     UNIQUE(task_id, record_id)
                 );
+                -- Stored records are never rewritten: DurableLog schema-checks a record once,
+                -- before insert. The only DELETE is the restart baseline's isolated reset,
+                -- which empties the whole task log (workloads/reset.py).
+                CREATE TRIGGER IF NOT EXISTS log_records_append_only
+                    BEFORE UPDATE ON log_records
+                    BEGIN SELECT RAISE(ABORT, 'log_records is append-only'); END;
                 CREATE TABLE IF NOT EXISTS task_context (
                     task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
                     context_spec_id TEXT NOT NULL,

@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.0.0",
+  "sampling_interval_seconds": 0.2,
+  "clock_source": "perf_counter",
+  "clock_resolution_seconds": 1e-09,
+  "window_start_ns": 10909305772330,
+  "window_stop_ns": 10946543590300,
+  "sample_count": 186,
+  "process_cpu_seconds": 31.56,
+  "peak_summed_rss_bytes": 4330258432,
+  "peak_gpu_memory_bytes": 30573264896,
+  "gpu_allocation_seconds": 37.23781797,
+  "gpu_error": null,
+  "unsampled_pids": [],
+  "last_process_samples": [
+    {
+      "pid": 75476,
+      "identity": "75476:1090939",
+      "cpu_seconds": 0.11,
+      "rss_bytes": 29696000,
+      "role": "tool_service"
+    },
+    {
+      "pid": 75479,
+      "identity": "75479:1090945",
+      "cpu_seconds": 7.11,
+      "rss_bytes": 1404006400,
+      "role": "inference-1"
+    },
+    {
+      "pid": 75520,
+      "identity": "75520:1091407",
+      "cpu_seconds": 0.01,
+      "rss_bytes": 12824576,
+      "role": "inference-1"
+    },
+    {
+      "pid": 75521,
+      "identity": "75521:1091407",
+      "cpu_seconds": 16.79,
+      "rss_bytes": 2825183232,
+      "role": "inference-1"
+    },
+    {
+      "pid": 75543,
+      "identity": "75543:1091816",
+      "cpu_seconds": 1.72,
+      "rss_bytes": 685326336,
+      "role": "inference-1"
+    },
+    {
+      "pid": 75545,
+      "identity": "75545:1091818",
+      "cpu_seconds": 1.66,
+      "rss_bytes": 685445120,
+      "role": "inference-1"
+    },
+    {
+      "pid": 75607,
+      "identity": "75607:1091895",
+      "cpu_seconds": 0.94,
+      "rss_bytes": 20029440,
+      "role": "inference-1"
+    },
+    {
+      "pid": 75614,
+      "identity": "75614:1091898",
+      "cpu_seconds": 0.0,
+      "rss_bytes": 19824640,
+      "role": "inference-1"
+    },
+    {
+      "pid": 75661,
+      "identity": "75661:1092890",
+      "cpu_seconds": 3.22,
+      "rss_bytes": 58548224,
+      "role": "runner-1"
+    }
+  ],
+  "gpu_identity": [
+    {
+      "index": 0,
+      "name": "NVIDIA GeForce RTX 5090",
+      "uuid": "GPU-673894ba-fd05-18da-27c6-10391d4cc209",
+      "driver": "580.178.04"
+    }
+  ],
+  "measurement_valid": true,
+  "limitations": [
+    "last samples may miss CPU before abrupt exit",
+    "summed RSS may double-count shared pages",
+    "allocation-seconds are reserved time, not active GPU cycles"
+  ]
+}

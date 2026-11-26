@@ -1,0 +1,25 @@
+{
+  "valid": true,
+  "consistency_pass": true,
+  "task_success": true,
+  "issues": [],
+  "observed_inventory": {
+    "item-a": 5,
+    "item-b": 5
+  },
+  "expected_final_inventory": {
+    "item-a": 5,
+    "item-b": 5
+  },
+  "metrics": {
+    "inventory_mismatches": 0,
+    "tool_state_mismatches": 0,
+    "duplicate_effects": 0,
+    "audit_complete": true,
+    "effect_count": 13,
+    "committed_operations": 20,
+    "completed_logical_steps": 20,
+    "unsafe_retry": null,
+    "false_abstain": null
+  }
+}
