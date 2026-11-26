@@ -8,7 +8,7 @@ from pathlib import Path
 from threading import Event
 
 from outcomeserve.storage import StateStore
-from outcomeserve.tools import ToolService
+from outcomeserve.tools import ExternalSupplierAPI, ToolService
 from outcomeserve.tools.baselines import AttemptToolService
 from outcomeserve.contracts import _unique_keys
 
@@ -65,6 +65,9 @@ def serve(database, barrier_file):
                                                   attempt=envelope["execution_attempt"], **request)
                     else:
                         response = ToolService(store, after_commit=after_commit).submit(**request)
+                elif self.path == "/external/submit":
+                    response = ExternalSupplierAPI(store, after_commit=after_commit).submit(
+                        logical_step_id=envelope.get("logical_step_id"), attempt=envelope.get("execution_attempt"), **request)
                 elif self.path == "/query":
                     response = ToolService(store).query(**request)
                 else:

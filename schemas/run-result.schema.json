@@ -14,7 +14,11 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.1.0"
+      "enum": [
+        "1.1.0",
+        "1.2.0",
+        "1.3.0"
+      ]
     },
     "backend": {
       "enum": [
@@ -72,6 +76,103 @@
           "type": "boolean"
         }
       }
+    },
+    "outcome": {
+      "enum": [
+        "COMPLETED",
+        "ABSTAINED",
+        "MODEL_ERROR",
+        "RECOVERY_VIOLATION",
+        "INFRASTRUCTURE_FAILURE",
+        "INVALID"
+      ]
+    },
+    "failure_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "fault_to_first_new_token_seconds": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "reset_seconds": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "inference_restart_seconds": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "gpu_matrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tier",
+        "prefix_target_tokens",
+        "method_order",
+        "gpu_name",
+        "driver_version"
+      ],
+      "properties": {
+        "tier": {
+          "enum": [
+            "pilot",
+            "1",
+            "1H",
+            "2",
+            "3"
+          ]
+        },
+        "prefix_target_tokens": {
+          "enum": [
+            2048,
+            8192,
+            16384
+          ]
+        },
+        "actual_prefix_tokens_at_fault": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "method_order": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "gpu_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "driver_version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "protocol_verification": {
+      "type": [
+        "object",
+        "null"
+      ]
     }
   },
   "allOf": [
@@ -103,6 +204,437 @@
             "maxItems": 0
           }
         }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "enum": [
+              "1.2.0",
+              "1.3.0"
+            ]
+          },
+          "backend": {
+            "const": "vllm"
+          }
+        },
+        "required": [
+          "schema_version",
+          "backend"
+        ]
+      },
+      "then": {
+        "required": [
+          "run_id",
+          "seed",
+          "purpose",
+          "no_fault",
+          "fault_domain",
+          "boundary",
+          "steps",
+          "requested_progress",
+          "actual_progress",
+          "apc",
+          "configuration_id",
+          "context_spec_id",
+          "business_fixture_sha256",
+          "hardware_id",
+          "runtime_versions",
+          "environment_lock_sha256",
+          "pair_key",
+          "outcome",
+          "gpu_matrix",
+          "metrics",
+          "task_to_verified_seconds",
+          "fault_to_verified_seconds",
+          "fault_to_first_new_token_seconds",
+          "reset_seconds"
+        ],
+        "properties": {
+          "purpose": {
+            "const": "performance"
+          },
+          "method": {
+            "enum": [
+              "outcomeserve",
+              "restart"
+            ]
+          },
+          "fault_domain": {
+            "enum": [
+              "inference",
+              "runner"
+            ]
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "steps": {
+            "const": 20
+          },
+          "apc": {
+            "type": "boolean"
+          },
+          "hardware_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "requested_progress": {
+            "enum": [
+              0.1,
+              0.5,
+              0.9,
+              null
+            ]
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "configuration_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "context_spec_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "business_fixture_sha256": {
+            "type": "string",
+            "minLength": 1
+          },
+          "environment_lock_sha256": {
+            "type": "string",
+            "minLength": 1
+          },
+          "pair_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "boundary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "no_fault": {
+            "type": "boolean"
+          },
+          "actual_progress": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "runtime_versions": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "metrics": {
+            "type": "object"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "valid": {
+                  "const": false
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "outcome": {
+                  "const": "INVALID"
+                }
+              },
+              "required": [
+                "outcome"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "valid": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "outcome": {
+                  "not": {
+                    "const": "INVALID"
+                  }
+                },
+                "invalid_reasons": {
+                  "maxItems": 0
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "no_fault": {
+                  "const": true
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "requested_progress": {
+                  "type": "null"
+                },
+                "fault_applied": {
+                  "const": false
+                },
+                "fault_to_verified_seconds": {
+                  "type": "null"
+                },
+                "fault_to_first_new_token_seconds": {
+                  "type": "null"
+                },
+                "gpu_matrix": {
+                  "properties": {
+                    "tier": {
+                      "enum": [
+                        "pilot",
+                        "1H"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "requested_progress": {
+                  "enum": [
+                    0.1,
+                    0.5,
+                    0.9
+                  ]
+                },
+                "gpu_matrix": {
+                  "properties": {
+                    "tier": {
+                      "enum": [
+                        "pilot",
+                        "1",
+                        "2",
+                        "3"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "outcome": {
+                  "const": "COMPLETED"
+                },
+                "no_fault": {
+                  "const": false
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "fault_applied": {
+                  "const": true
+                },
+                "fault_to_verified_seconds": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "const": "COMPLETED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "passed": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "passed": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "outcome": {
+            "const": "COMPLETED"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "const": "INVALID"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "valid": {
+            "const": false
+          },
+          "invalid_reasons": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "1.3.0"
+          },
+          "backend": {
+            "const": "vllm"
+          }
+        },
+        "required": [
+          "schema_version",
+          "backend"
+        ]
+      },
+      "then": {
+        "required": [
+          "task_id"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "method": {
+                  "const": "outcomeserve"
+                },
+                "outcome": {
+                  "const": "COMPLETED"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "protocol_verification"
+              ],
+              "properties": {
+                "protocol_verification": {
+                  "type": "object",
+                  "required": [
+                    "valid",
+                    "token_source",
+                    "checkpoint",
+                    "consistency_pass",
+                    "task_success",
+                    "task_id",
+                    "context_spec_id"
+                  ],
+                  "properties": {
+                    "valid": {
+                      "const": true
+                    },
+                    "token_source": {
+                      "const": "model"
+                    },
+                    "checkpoint": {
+                      "const": "completed"
+                    },
+                    "consistency_pass": {
+                      "const": true
+                    },
+                    "task_success": {
+                      "const": true
+                    },
+                    "task_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "context_spec_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "method": {
+                  "const": "outcomeserve"
+                },
+                "outcome": {
+                  "const": "COMPLETED"
+                },
+                "no_fault": {
+                  "const": false
+                },
+                "fault_domain": {
+                  "const": "inference"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "protocol_verification": {
+                  "type": "object",
+                  "required": [
+                    "replay_valid"
+                  ],
+                  "properties": {
+                    "replay_valid": {
+                      "enum": [
+                        true,
+                        null
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
       }
     }
   ]
