@@ -9,16 +9,21 @@ from outcomeserve.contracts import validate_schema
 
 
 class Measurements:
-    def __init__(self, path, *, run_id, configuration_id):
+    def __init__(self, path, *, run_id, configuration_id, clock_id=None):
         self.path = Path(path)
         self.run_id, self.configuration_id = run_id, configuration_id
-        self.clock_id = socket.gethostname() + ":" + uuid4().hex
+        # A supervisor passes its clock_id to the processes it starts, so their
+        # perf_counter timestamps on the same host can be compared with its own.
+        self.clock_id = clock_id or socket.gethostname() + ":" + uuid4().hex
         self.events = []
+        # Another process (an earlier runner attempt) may have appended to this file;
+        # continue its sequence so each file stays gap-free.
+        self.offset = sum(1 for _ in self.path.open(encoding="utf-8")) if self.path.exists() else 0
 
     def emit(self, event_type, **details):
         event = {"schema_version": "1.1.0", "run_id": self.run_id,
                  "configuration_id": self.configuration_id, "clock_id": self.clock_id,
-                 "sequence": len(self.events) + 1, "event_type": event_type,
+                 "sequence": self.offset + len(self.events) + 1, "event_type": event_type,
                  "monotonic_ns": time.perf_counter_ns(), "details": details}
         event.update(clock_source="perf_counter", clock_resolution_seconds=time.get_clock_info("perf_counter").resolution)
         self.events.append(event)

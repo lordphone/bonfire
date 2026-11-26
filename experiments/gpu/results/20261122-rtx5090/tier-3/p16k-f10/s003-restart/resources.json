@@ -1,0 +1,171 @@
+{
+  "schema_version": "1.0.0",
+  "sampling_interval_seconds": 0.2,
+  "clock_source": "perf_counter",
+  "clock_resolution_seconds": 1e-09,
+  "window_start_ns": 23679565283369,
+  "window_stop_ns": 23751516090849,
+  "sample_count": 360,
+  "process_cpu_seconds": 57.03,
+  "peak_summed_rss_bytes": 6502744064,
+  "peak_gpu_memory_bytes": 30566383616,
+  "gpu_allocation_seconds": 71.95080748,
+  "gpu_error": null,
+  "unsampled_pids": [],
+  "last_process_samples": [
+    {
+      "pid": 170749,
+      "identity": "170749:2367963",
+      "cpu_seconds": 0.12,
+      "rss_bytes": 29458432,
+      "role": "tool_service"
+    },
+    {
+      "pid": 170752,
+      "identity": "170752:2367969",
+      "cpu_seconds": 6.86,
+      "rss_bytes": 1417543680,
+      "role": "inference-1"
+    },
+    {
+      "pid": 170793,
+      "identity": "170793:2368434",
+      "cpu_seconds": 0.01,
+      "rss_bytes": 12636160,
+      "role": "inference-1"
+    },
+    {
+      "pid": 170794,
+      "identity": "170794:2368434",
+      "cpu_seconds": 15.87,
+      "rss_bytes": 0,
+      "role": "inference-1"
+    },
+    {
+      "pid": 170816,
+      "identity": "170816:2368866",
+      "cpu_seconds": 1.71,
+      "rss_bytes": 685150208,
+      "role": "inference-1"
+    },
+    {
+      "pid": 170818,
+      "identity": "170818:2368867",
+      "cpu_seconds": 1.66,
+      "rss_bytes": 685699072,
+      "role": "inference-1"
+    },
+    {
+      "pid": 170880,
+      "identity": "170880:2368947",
+      "cpu_seconds": 0.96,
+      "rss_bytes": 20180992,
+      "role": "inference-1"
+    },
+    {
+      "pid": 170887,
+      "identity": "170887:2368950",
+      "cpu_seconds": 0.0,
+      "rss_bytes": 20045824,
+      "role": "inference-1"
+    },
+    {
+      "pid": 170901,
+      "identity": "170901:2369185",
+      "cpu_seconds": 0.0,
+      "rss_bytes": 3653632,
+      "role": "inference-1"
+    },
+    {
+      "pid": 170902,
+      "identity": "170902:2369185",
+      "cpu_seconds": 0.0,
+      "rss_bytes": 8396800,
+      "role": "inference-1"
+    },
+    {
+      "pid": 170903,
+      "identity": "170903:2369185",
+      "cpu_seconds": 0.0,
+      "rss_bytes": 0,
+      "role": "inference-1"
+    },
+    {
+      "pid": 170934,
+      "identity": "170934:2369975",
+      "cpu_seconds": 0.07,
+      "rss_bytes": 32911360,
+      "role": "runner-1"
+    },
+    {
+      "pid": 170962,
+      "identity": "170962:2370390",
+      "cpu_seconds": 0.21,
+      "rss_bytes": 33374208,
+      "role": "runner-2"
+    },
+    {
+      "pid": 170963,
+      "identity": "170963:2370390",
+      "cpu_seconds": 7.22,
+      "rss_bytes": 1413943296,
+      "role": "inference-2"
+    },
+    {
+      "pid": 171004,
+      "identity": "171004:2370852",
+      "cpu_seconds": 0.01,
+      "rss_bytes": 12615680,
+      "role": "inference-2"
+    },
+    {
+      "pid": 171005,
+      "identity": "171005:2370853",
+      "cpu_seconds": 18.06,
+      "rss_bytes": 2821214208,
+      "role": "inference-2"
+    },
+    {
+      "pid": 171027,
+      "identity": "171027:2371264",
+      "cpu_seconds": 1.7,
+      "rss_bytes": 688381952,
+      "role": "inference-2"
+    },
+    {
+      "pid": 171029,
+      "identity": "171029:2371265",
+      "cpu_seconds": 1.66,
+      "rss_bytes": 685600768,
+      "role": "inference-2"
+    },
+    {
+      "pid": 171091,
+      "identity": "171091:2371345",
+      "cpu_seconds": 0.91,
+      "rss_bytes": 19763200,
+      "role": "inference-2"
+    },
+    {
+      "pid": 171098,
+      "identity": "171098:2371348",
+      "cpu_seconds": 0.0,
+      "rss_bytes": 19804160,
+      "role": "inference-2"
+    }
+  ],
+  "gpu_identity": [
+    {
+      "index": 0,
+      "name": "NVIDIA GeForce RTX 5090",
+      "uuid": "GPU-673894ba-fd05-18da-27c6-10391d4cc209",
+      "driver": "580.178.04"
+    }
+  ],
+  "measurement_valid": true,
+  "limitations": [
+    "last samples may miss CPU before abrupt exit",
+    "summed RSS may double-count shared pages",
+    "allocation-seconds are reserved time, not active GPU cycles"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "model_id": "Qwen/Qwen3-4B",
+  "model_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+  "tokenizer_id": "Qwen/Qwen3-4B",
+  "tokenizer_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+  "chat_template_sha256": "d7688b837da933dc94439bce385c97e191e5570ae7234e60f8665394613294a1",
+  "enable_thinking": false,
+  "backend": "vllm"
+}
